@@ -2,6 +2,12 @@
 
 to measure block creation time with the IMPT policy
 
+### Test Mining Power on Multithread Env.
+```
+$ sh ./consensus/ethash/test.sh
+$ cat result.txt
+```
+
 ## Go Ethereum
 
 Official Golang implementation of the Ethereum protocol.
