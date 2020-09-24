@@ -24,11 +24,65 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 )
+
+// @ Luke Park
+func TestIMPT(t *testing.T) {
+	header := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(1000000)}  // 10000000
+
+	ethash := NewTester(nil, false)
+	defer ethash.Close()
+
+	// Set threads $THREADNUM
+	threads, err := strconv.Atoi(os.Getenv("THREADNUM"))
+	if err != nil {
+		t.Fatalf("failed to set threads: %v", err)
+	}
+
+	ethash.SetThreads(threads)
+
+	// Avg. about 100 simulations
+	start := time.Now()
+
+	for i := 0; i < 100; i++ {
+		results := make(chan *types.Block)
+		if err = ethash.Seal(nil, types.NewBlockWithHeader(header), results, nil); err != nil {
+			t.Fatalf("failed to seal block: %v", err)
+		}
+		select {
+		case block := <-results:
+			header.Nonce = types.EncodeNonce(block.Nonce())
+			header.MixDigest = block.MixDigest()
+			if err := ethash.VerifySeal(nil, header); err != nil {
+				t.Fatalf("unexpected verification error: %v", err)
+			}
+			// case <-time.NewTimer(time.Second).C:
+			// 	t.Error("sealing result timeout")
+		}
+	}
+
+	elapsed := time.Since(start)
+	// t.Log(threads, elapsed)
+
+	// file write
+	f, err := os.OpenFile("./result.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("file write error: %v", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(strconv.Itoa(threads) + "\t"); err != nil {
+		t.Fatalf("file write error: %v", err)
+	}
+	if _, err := f.WriteString(elapsed.String() + "\n"); err != nil {
+		t.Fatalf("file write error: %v", err)
+	}
+}
 
 // Tests that ethash works correctly in test mode.
 func TestTestMode(t *testing.T) {
