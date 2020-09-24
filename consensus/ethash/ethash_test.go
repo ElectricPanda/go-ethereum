@@ -33,10 +33,23 @@ import (
 
 // @ Luke Park
 func TestIMPT(t *testing.T) {
-	header := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(1000000)}  // 10000000
+	header := &types.Header{Number: big.NewInt(1), Difficulty: big.NewInt(100000)}  // 10000000
 
-	ethash := NewTester(nil, false)
+	tmpdir, err := ioutil.TempDir("", "ethash-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	ethash := New(Config{
+		CacheDir:       tmpdir,  // Default CacheDir is "ethash"
+		CachesInMem:    2,
+		CachesOnDisk:   3,
+		DatasetsInMem:  1,
+		DatasetsOnDisk: 2,
+	}, nil, false)
 	defer ethash.Close()
+	// t.Log(ethash.config.PowMode)
 
 	// Set threads $THREADNUM
 	threads, err := strconv.Atoi(os.Getenv("THREADNUM"))
