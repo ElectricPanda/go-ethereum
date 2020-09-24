@@ -92,7 +92,7 @@ func TestIMPT(t *testing.T) {
 	if _, err := f.WriteString(strconv.Itoa(threads) + "\t"); err != nil {
 		t.Fatalf("file write error: %v", err)
 	}
-	if _, err := f.WriteString(elapsed.String() + "\n"); err != nil {
+	if _, err := f.WriteString(strconv.FormatFloat(elapsed.Seconds(), 'f', -1, 64) + "\n"); err != nil {
 		t.Fatalf("file write error: %v", err)
 	}
 }
