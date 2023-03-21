@@ -172,6 +172,7 @@ func echo() {
 }
 
 func initialize() {
+	fmt.Println("initialize()")
 	log.Root().SetHandler(log.LvlFilterHandler(log.Lvl(*argVerbosity), log.StreamHandler(os.Stderr, log.TerminalFormat(false))))
 
 	done = make(chan struct{})
@@ -276,6 +277,7 @@ func initialize() {
 		}
 	}
 
+	fmt.Println("initialize()내부에서 server 선언하기 직전")
 	server = &p2p.Server{
 		Config: p2p.Config{
 			PrivateKey:     nodeid,

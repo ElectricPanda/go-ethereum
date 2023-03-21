@@ -25,6 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	// "os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -192,6 +193,7 @@ func NewProtocolManager(config *params.ChainConfig, checkpoint *params.TrustedCh
 }
 
 func (pm *ProtocolManager) makeProtocol(version uint) p2p.Protocol {
+	fmt.Println("makeProtocol()")
 	length, ok := protocolLengths[version]
 	if !ok {
 		panic("makeProtocol for unknown version")
@@ -205,8 +207,10 @@ func (pm *ProtocolManager) makeProtocol(version uint) p2p.Protocol {
 			peer := pm.newPeer(int(version), p, rw)
 			select {
 			case pm.newPeerCh <- peer:
+				fmt.Println("case pm.newPeerCh <- peer: ")
 				pm.wg.Add(1)
 				defer pm.wg.Done()
+				fmt.Println("calling pm.handle(peer)")
 				return pm.handle(peer)
 			case <-pm.quitSync:
 				return p2p.DiscQuitting
@@ -244,6 +248,7 @@ func (pm *ProtocolManager) removePeer(id string) {
 }
 
 func (pm *ProtocolManager) Start(maxPeers int) {
+	fmt.Println("pm Start()")
 	pm.maxPeers = maxPeers
 
 	// broadcast transactions
@@ -256,6 +261,7 @@ func (pm *ProtocolManager) Start(maxPeers int) {
 	go pm.minedBroadcastLoop()
 
 	// start sync handlers
+	fmt.Println("pm.syncer()를 부르기 직전")
 	go pm.syncer()
 	go pm.txsyncLoop()
 }
@@ -292,6 +298,7 @@ func (pm *ProtocolManager) newPeer(pv int, p *p2p.Peer, rw p2p.MsgReadWriter) *p
 // handle is the callback invoked to manage the life cycle of an eth peer. When
 // this function terminates, the peer is disconnected.
 func (pm *ProtocolManager) handle(p *peer) error {
+	fmt.Println("handle()")
 	// Ignore maxPeers if this is a trusted peer
 	if pm.peers.Len() >= pm.maxPeers && !p.Peer.Info().Network.Trusted {
 		return p2p.DiscTooManyPeers
@@ -364,6 +371,7 @@ func (pm *ProtocolManager) handle(p *peer) error {
 	}
 	// Handle incoming messages until the connection is torn down
 	for {
+		fmt.Println("pm.handleMsg()")
 		if err := pm.handleMsg(p); err != nil {
 			p.Log().Debug("Ethereum message handling failed", "err", err)
 			return err
@@ -374,8 +382,12 @@ func (pm *ProtocolManager) handle(p *peer) error {
 // handleMsg is invoked whenever an inbound message is received from a remote
 // peer. The remote connection is torn down upon returning any error.
 func (pm *ProtocolManager) handleMsg(p *peer) error {
+	fmt.Println("handleMsg()")
 	// Read the next message from the remote peer, and ensure it's fully consumed
+	fmt.Println("여기서 부른거니? ReadMsg() 전")
 	msg, err := p.rw.ReadMsg()
+	fmt.Println("ReadMsg()를 통해 리턴된 값 msg: ", msg)
+	fmt.Println("여기서 부른거니? ReadMsg() 후")
 	if err != nil {
 		return err
 	}
@@ -387,11 +399,13 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 	// Handle the message depending on its contents
 	switch {
 	case msg.Code == StatusMsg:
+		fmt.Println("msg.Code == StatusMsg:")
 		// Status messages should never arrive after the handshake
 		return errResp(ErrExtraStatusMsg, "uncontrolled status message")
 
 	// Block header query, collect the requested headers and reply
 	case msg.Code == GetBlockHeadersMsg:
+		fmt.Println("msg.Code == GetBlockHeadersMsg:")
 		// Decode the complex header query
 		var query getBlockHeadersData
 		if err := msg.Decode(&query); err != nil {
@@ -479,6 +493,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		return p.SendBlockHeaders(headers)
 
 	case msg.Code == BlockHeadersMsg:
+		fmt.Println("msg.Code == BlockHeadersMsg:")
 		// A batch of headers arrived to one of our previous requests
 		var headers []*types.Header
 		if err := msg.Decode(&headers); err != nil {
@@ -532,6 +547,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		}
 
 	case msg.Code == GetBlockBodiesMsg:
+		fmt.Println("msg.Code == GetBlockBodiesMsg:")
 		// Decode the retrieval message
 		msgStream := rlp.NewStream(msg.Payload, uint64(msg.Size))
 		if _, err := msgStream.List(); err != nil {
@@ -559,6 +575,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		return p.SendBlockBodiesRLP(bodies)
 
 	case msg.Code == BlockBodiesMsg:
+		fmt.Println("msg.Code == BlockBodiesMsg:")
 		// A batch of block bodies arrived to one of our previous requests
 		var request blockBodiesData
 		if err := msg.Decode(&request); err != nil {
@@ -587,6 +604,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		}
 
 	case p.version >= eth63 && msg.Code == GetNodeDataMsg:
+		fmt.Println("msg.Code == GetNodeDataMsg:")
 		// Decode the retrieval message
 		msgStream := rlp.NewStream(msg.Payload, uint64(msg.Size))
 		if _, err := msgStream.List(); err != nil {
@@ -609,11 +627,44 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 			if entry, err := pm.blockchain.TrieNode(hash); err == nil {
 				data = append(data, entry)
 				bytes += len(entry)
+				// 노드가 leveldb의 어느곳에 저장되어 있는지 프린트하는 코드 (mskim)
+				// if(common.TrieNodeFrom == "c") {
+				// 	common.TrieCacheHitFromSync++
+				// }
+				// if(common.TrieNodeFroP == "d") {
+				// 	common.TrieCacheDirtyHitFromSync++
+				// }
+				// if(common.TrieNodeFrom == "p") {
+				// 	common.TrieCacheMissFromSync++
+					// if(common.LevelDBNodeFrom == -1){
+					// 	common.LevelDBCacheHitFromSync++
+					// } else if (common.LevelDBNodeFrom == 0){
+					// 	common.LevelDBLevel0HitFromSync++
+					// } else if (common.LevelDBNodeFrom == 1 ){
+					// 	common.LevelDBLevel1HitFromSync++
+					// } else if (common.LevelDBNodeFrom == 2 ){
+					// 	common.LevelDBLevel2HitFromSync++
+					// } else if (common.LevelDBNodeFrom == 3 ){
+					// 	common.LevelDBLevel3HitFromSync++
+					// } else if (common.LevelDBNodeFrom == 4 ){
+					// 	common.LevelDBLevel4HitFromSync++
+					// } else if (common.LevelDBNodeFrom == 5 ){
+					// 	common.LevelDBLevel5HitFromSync++
+					// } else if (common.LevelDBNodeFrom > 5){
+					// 	common.LevelDBLevelBeyond5HitFromSync++
+					// } else { 
+					// 	os.Exit(1)
+					// }
+				// }
+				// fmt.Println("Trie Cache record", "Cache Hit: ", common.TrieCacheHitFromSync, "Cache Dirty Hit: ", common.TrieCacheDirtyHitFromSync, "Cache Miss: ", common.TrieCacheMissFromSync)
+				// fmt.Println("LevelDB Cache record", "Cache Hit: ", common.LevelDBCacheHitFromSync, "Level0 :", common.LevelDBLevel0HitFromSync,"Level1 :", common.LevelDBLevel1HitFromSync, "Level2 :", common.LevelDBLevel2HitFromSync, "Level3 :", common.LevelDBLevel3HitFromSync, "Level4 :", common.LevelDBLevel4HitFromSync, "Level5 :", common.LevelDBLevel5HitFromSync, "Level5++ :", common.LevelDBLevelBeyond5HitFromSync)
+				// common.LevelDBNodeFrom = -2;
 			}
 		}
 		return p.SendNodeData(data)
 
 	case p.version >= eth63 && msg.Code == NodeDataMsg:
+		fmt.Println("msg.Code == NodeDataMsg:")
 		// A batch of node state data arrived to one of our previous requests
 		var data [][]byte
 		if err := msg.Decode(&data); err != nil {
@@ -625,6 +676,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		}
 
 	case p.version >= eth63 && msg.Code == GetReceiptsMsg:
+		fmt.Println("msg.Code == GetReceiptsMsg:")
 		// Decode the retrieval message
 		msgStream := rlp.NewStream(msg.Payload, uint64(msg.Size))
 		if _, err := msgStream.List(); err != nil {
@@ -661,6 +713,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		return p.SendReceiptsRLP(receipts)
 
 	case p.version >= eth63 && msg.Code == ReceiptsMsg:
+		fmt.Println("msg.Code == ReceiptsMsg:")
 		// A batch of receipts arrived to one of our previous requests
 		var receipts [][]*types.Receipt
 		if err := msg.Decode(&receipts); err != nil {
@@ -672,6 +725,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		}
 
 	case msg.Code == NewBlockHashesMsg:
+		fmt.Println("msg.Code == NewBlockHashesMsg:")
 		var announces newBlockHashesData
 		if err := msg.Decode(&announces); err != nil {
 			return errResp(ErrDecode, "%v: %v", msg, err)
@@ -692,6 +746,7 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 		}
 
 	case msg.Code == NewBlockMsg:
+		fmt.Println("msg.Code == NewBlockMsg")
 		// Retrieve and decode the propagated block
 		var request newBlockData
 		if err := msg.Decode(&request); err != nil {
@@ -722,11 +777,13 @@ func (pm *ProtocolManager) handleMsg(p *peer) error {
 			// scenario should easily be covered by the fetcher.
 			currentBlock := pm.blockchain.CurrentBlock()
 			if trueTD.Cmp(pm.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())) > 0 {
+				fmt.Println("pm.synchronise()를 부르고 있음")
 				go pm.synchronise(p)
 			}
 		}
 
 	case msg.Code == TxMsg:
+		fmt.Println("msg.Code == TxMsg:")
 		// Transactions arrived, make sure we have a valid and fresh chain to handle them
 		if atomic.LoadUint32(&pm.acceptTxs) == 0 {
 			break

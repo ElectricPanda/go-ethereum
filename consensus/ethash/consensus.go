@@ -306,7 +306,8 @@ func (ethash *Ethash) CalcDifficulty(chain consensus.ChainReader, time uint64, p
 	// return CalcDifficulty(chain.Config(), time, parent) // original code
 
 	// return parent.Difficulty // set difficulty as 0 for evaluation test, when genesis block's difficulty is 0 (jmlee)
-	return new(big.Int).Exp(big.NewInt(2), big.NewInt(16), big.NewInt(0)) // set low difficulty for relatively easy mining (jmlee)
+	// return new(big.Int).Exp(big.NewInt(2), big.NewInt(16), big.NewInt(0)) // set low difficulty for relatively easy mining (jmlee)
+	return new(big.Int).Exp(big.NewInt(2), big.NewInt(0), big.NewInt(0)) // set low difficulty for relatively easy mining (jmlee)
 }
 
 // CalcDifficulty is the difficulty adjustment algorithm. It returns

@@ -48,7 +48,7 @@ type keccakState interface {
 type sliceBuffer []byte
 
 const FakeIMPT bool = true	// forcely prefixing trie node's hash value with block number without mining
-const PrefixLength int = 2	// actually, this may be prefix bytes (ex. PrefixLength = 3 -> prefixes 6 characters)
+const PrefixLength int = 4	// actually, this may be prefix bytes (ex. PrefixLength = 3 -> prefixes 6 characters)
 const DoReadHeader bool = true	// using header while mining trie nodes
 const loopAccesses int = 1 // Number of accesses in Trie-Hashimoto loop
 const EthashDatasetLen uint32 = 826277728 // Ethash dataset size (826277728: at block 8,000,000)

@@ -395,6 +395,7 @@ type protoRW struct {
 }
 
 func (rw *protoRW) WriteMsg(msg Msg) (err error) {
+	fmt.Println("WriteMsg() 3")
 	if msg.Code >= rw.Length {
 		return newPeerError(errInvalidMsgCode, "not handled")
 	}
@@ -414,8 +415,11 @@ func (rw *protoRW) WriteMsg(msg Msg) (err error) {
 }
 
 func (rw *protoRW) ReadMsg() (Msg, error) {
+	fmt.Println("ReadMsg() 3")
 	select {
 	case msg := <-rw.in:
+		fmt.Println("msg := <-rw.in")
+		fmt.Println("msg: ", msg)
 		msg.Code -= rw.offset
 		return msg, nil
 	case <-rw.closed:
@@ -443,6 +447,7 @@ type PeerInfo struct {
 
 // Info gathers and returns a collection of metadata known about a peer.
 func (p *Peer) Info() *PeerInfo {
+	fmt.Println("Info()")
 	// Gather the protocol capabilities
 	var caps []string
 	for _, cap := range p.Caps() {

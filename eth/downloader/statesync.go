@@ -21,6 +21,7 @@ import (
 	"hash"
 	"sync"
 	"time"
+	"os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -43,6 +44,17 @@ type stateReq struct {
 	dropped  bool                       // Flag whether the peer dropped off early
 }
 
+var ReceiverPushFilePath = "/data/trieHashimoto/th_experiment_data_3/logs/batch1/setHead_100000_cache_10G_depth+[0:9]_push.txt"
+
+func logQueuePushNewLine(){
+	f, err := os.OpenFile(ReceiverPushFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERR:", err)
+	}
+	fmt.Fprintln(f,"")
+	f.Close()
+}
+
 // timedOut returns if this request timed out.
 func (req *stateReq) timedOut() bool {
 	return req.response == nil
@@ -59,11 +71,13 @@ type stateSyncStats struct {
 
 // syncState starts downloading state with the given root hash.
 func (d *Downloader) syncState(root common.Hash) *stateSync {
+	fmt.Println("syncState root: ", root.Hex())
 	// Create the state sync
 	s := newStateSync(d, root)
 	select {
 	case d.stateSyncStart <- s:
 	case <-d.quitCh:
+		fmt.Println("**************** <-d.quitCh ****************")
 		s.err = errCancelStateFetch
 		close(s.done)
 	}
@@ -76,6 +90,7 @@ func (d *Downloader) stateFetcher() {
 	for {
 		select {
 		case s := <-d.stateSyncStart:
+			
 			for next := s; next != nil; {
 				next = d.runStateSync(next)
 			}
@@ -90,6 +105,7 @@ func (d *Downloader) stateFetcher() {
 // runStateSync runs a state synchronisation until it completes or another root
 // hash is requested to be switched over to.
 func (d *Downloader) runStateSync(s *stateSync) *stateSync {
+	fmt.Println("**************** runStateSync() ****************")
 	var (
 		active   = make(map[string]*stateReq) // Currently in-flight requests
 		finished []*stateReq                  // Completed or failed requests
@@ -129,10 +145,13 @@ func (d *Downloader) runStateSync(s *stateSync) *stateSync {
 			return next
 
 		case <-s.done:
+			fmt.Println("**************** <-s.done ****************")
 			return nil
 
 		// Send the next finished request to the current sync:
 		case deliverReqCh <- deliverReq:
+			fmt.Println("**************** deliverReqCh <- deliverReq ****************")
+			fmt.Println("여기가 그러니까 피어에게 요청을 보내는 부분이구만")
 			// Shift out the first request, but also set the emptied slot to nil for GC
 			copy(finished, finished[1:])
 			finished[len(finished)-1] = nil
@@ -140,8 +159,11 @@ func (d *Downloader) runStateSync(s *stateSync) *stateSync {
 
 		// Handle incoming state packs:
 		case pack := <-d.stateCh:
+			fmt.Println("**************** pack := <-d.stateCh ****************")
+			fmt.Println("여기가 그러니까 피어와 통신해서 실제 데이터를 받아오는 부분이구만")
 			// Discard any data not requested (or previously timed out)
 			req := active[pack.PeerId()]
+			fmt.Println("여기 단계에서의 req?: ", req)
 			if req == nil {
 				log.Debug("Unrequested node data", "peer", pack.PeerId(), "len", pack.Items())
 				continue
@@ -149,6 +171,7 @@ func (d *Downloader) runStateSync(s *stateSync) *stateSync {
 			// Finalize the request and queue up for processing
 			req.timer.Stop()
 			req.response = pack.(*statePack).states
+			fmt.Println("여기 단계에서의 req.response?: ", req.response)
 
 			finished = append(finished, req)
 			delete(active, pack.PeerId())
@@ -201,6 +224,8 @@ func (d *Downloader) runStateSync(s *stateSync) *stateSync {
 				select {
 				case timeout <- req:
 				case <-s.done:
+					fmt.Println("**************** <-s.done22 ****************")
+
 					// Prevent leaking of timer goroutines in the unlikely case where a
 					// timer is fired just before exiting runStateSync.
 				}
@@ -254,6 +279,7 @@ func newStateSync(d *Downloader, root common.Hash) *stateSync {
 // finish.
 func (s *stateSync) run() {
 	s.err = s.loop()
+	fmt.Println("run()에서 loop이 에러를 뱉은 상황인건가?!")
 	close(s.done)
 }
 
@@ -290,6 +316,7 @@ func (s *stateSync) loop() (err error) {
 	// Keep assigning new tasks until the sync completes or aborts
 	for s.sched.Pending() > 0 {
 		if err = s.commit(false); err != nil {
+			fmt.Println("loop()이 에러를 내뱉는 케이스1")
 			return err
 		}
 		s.assignTasks()
@@ -305,11 +332,15 @@ func (s *stateSync) loop() (err error) {
 			return errCanceled
 
 		case req := <-s.deliver:
+			fmt.Println("req := <-s.deliver")
+			fmt.Println("원래 지금 내가 보던 파이프라인에서 req.response는?!: ")
+			fmt.Println("length(req.response): ", len(req.response))
 			// Response, disconnect or timeout triggered, drop the peer if stalling
 			log.Trace("Received node data response", "peer", req.peer.id, "count", len(req.response), "dropped", req.dropped, "timeout", !req.dropped && req.timedOut())
 			if len(req.items) <= 2 && !req.dropped && req.timedOut() {
 				// 2 items are the minimum requested, if even that times out, we've no use of
 				// this peer at the moment.
+				fmt.Println("len(req.items): ", len(req.items))
 				log.Warn("Stalling state sync, dropping peer", "peer", req.peer.id)
 				if s.d.dropPeer == nil {
 					// The dropPeer method is nil when `--copydb` is used for a local copy.
@@ -325,6 +356,7 @@ func (s *stateSync) loop() (err error) {
 
 					if master {
 						s.d.cancel()
+						fmt.Println("loop()이 에러를 내뱉는 케이스2, 타임아웃에러")
 						return errTimeout
 					}
 				}
@@ -333,6 +365,7 @@ func (s *stateSync) loop() (err error) {
 			delivered, err := s.process(req)
 			if err != nil {
 				log.Warn("Node data write error", "err", err)
+				fmt.Println("loop()이 에러를 내뱉는 케이스3")
 				return err
 			}
 			req.peer.SetNodeDataIdle(delivered)
@@ -362,19 +395,29 @@ func (s *stateSync) commit(force bool) error {
 // assignTasks attempts to assign new tasks to all idle peers, either from the
 // batch currently being retried, or fetching new data from the trie sync itself.
 func (s *stateSync) assignTasks() {
+	fmt.Println("assignTasks()")
 	// Iterate over all idle peers and try to assign them state fetches
 	peers, _ := s.d.peers.NodeDataIdlePeers()
 	for _, p := range peers {
 		// Assign a batch of fetches proportional to the estimated latency/bandwidth
 		cap := p.NodeDataCapacity(s.d.requestRTT())
+		fmt.Println("cap: ",cap)
 		req := &stateReq{peer: p, timeout: s.d.requestTTL()}
+		fmt.Println("fillTasks()를 부르기 전임!!!")
+		fmt.Println("fillTasks()를 부르기 전의 req: ", req)
+		fmt.Println("fillTasks()를 부르기 전의 req.response: ", req.response)
 		s.fillTasks(cap, req)
+		fmt.Println("fillTasks()부르고 난 후임!!!")
+		fmt.Println("fillTasks()를 부른 후의 req: ", req)
+		fmt.Println("fillTasks()를 부른 후의 req.response: ", req.response)
 
+		
 		// If the peer was assigned tasks to fetch, send the network request
 		if len(req.items) > 0 {
 			req.peer.log.Trace("Requesting new batch of data", "type", "state", "count", len(req.items))
 			select {
 			case s.d.trackStateReq <- req:
+				fmt.Println("s.d.trackStateReq <- req")
 				req.peer.FetchNodeData(req.items)
 			case <-s.cancel:
 			case <-s.d.cancelCh:
@@ -388,14 +431,21 @@ func (s *stateSync) assignTasks() {
 func (s *stateSync) fillTasks(n int, req *stateReq) {
 	// Refill available tasks from the scheduler.
 	if len(s.tasks) < n {
+		fmt.Println("n:", n)
+		fmt.Println("len(s.tasks): ", len(s.tasks))
+		fmt.Println("n-len(s.tasks)", n-len(s.tasks))
 		new := s.sched.Missing(n - len(s.tasks))
 		for _, hash := range new {
 			s.tasks[hash] = &stateTask{make(map[string]struct{})}
 		}
 	}
+
+
 	// Find tasks that haven't been tried with the request's peer.
 	req.items = make([]common.Hash, 0, n)
 	req.tasks = make(map[common.Hash]*stateTask, n)
+	fmt.Println("req.items: ", req.items)
+	fmt.Println("req.tasks: ", req.tasks)
 	for hash, t := range s.tasks {
 		// Stop when we've gathered enough requests
 		if len(req.items) == n {
@@ -418,6 +468,7 @@ func (s *stateSync) fillTasks(n int, req *stateReq) {
 // delivered. Returns whether the peer actually managed to deliver anything of
 // value, and any error that occurred.
 func (s *stateSync) process(req *stateReq) (int, error) {
+	fmt.Println("process")
 	// Collect processing stats and update progress if valid data was received
 	duplicate, unexpected, successful := 0, 0, 0
 
@@ -429,7 +480,7 @@ func (s *stateSync) process(req *stateReq) (int, error) {
 
 	// Iterate over all the delivered data and inject one-by-one into the trie
 	for _, blob := range req.response {
-		_, hash, err := s.processNodeData(blob)
+		_, hash, err := s.processNodeData(blob) 
 		switch err {
 		case nil:
 			s.numUncommitted++
@@ -437,15 +488,22 @@ func (s *stateSync) process(req *stateReq) (int, error) {
 			successful++
 		case trie.ErrNotRequested:
 			unexpected++
+			fmt.Println("Requested NodeHash Unexpected: ", hash.Hex())
 		case trie.ErrAlreadyProcessed:
 			duplicate++
+			fmt.Println("Requested NodeHash Duplicate: ", hash.Hex())
 		default:
 			return successful, fmt.Errorf("invalid state node %s: %v", hash.TerminalString(), err)
 		}
 		delete(req.tasks, hash)
 	}
+	logQueuePushNewLine()
+	logQueuePushNewLine()
+	logQueuePushNewLine()
+
 	// Put unfulfilled tasks back into the retry queue
 	npeers := s.d.peers.Len()
+	fmt.Println("npeers: ", npeers)
 	for hash, task := range req.tasks {
 		// If the node did deliver something, missing items may be due to a protocol
 		// limit or a previous timeout + delayed delivery. Both cases should permit
@@ -455,6 +513,7 @@ func (s *stateSync) process(req *stateReq) (int, error) {
 		}
 		// If we've requested the node too many times already, it may be a malicious
 		// sync where nobody has the right data. Abort.
+		fmt.Println("len(task.attempts): ", len(task.attempts))
 		if len(task.attempts) >= npeers {
 			return successful, fmt.Errorf("state node %s failed with all peers (%d tries, %d peers)", hash.TerminalString(), len(task.attempts), npeers)
 		}
@@ -469,6 +528,8 @@ func (s *stateSync) process(req *stateReq) (int, error) {
 // error occurred.
 var cnt uint64 = 0
 func (s *stateSync) processNodeData(blob []byte) (bool, common.Hash, error) {
+	fmt.Println("#########################################################################################")
+	fmt.Println("processNodeData()")
 	res := trie.SyncResult{Data: blob}
 	s.keccak.Reset()
 	s.keccak.Write(blob)
@@ -476,7 +537,9 @@ func (s *stateSync) processNodeData(blob []byte) (bool, common.Hash, error) {
 
 	// forcely change trie node hash value for syncing with fake TH data (this enables fast-sync with fake TH data) (jmlee)
 	startTime := time.Now()
+	fmt.Println("PrefixingTrieNodeHash 하기 전: ", res.Hash)
 	s.sched.PrefixingTrieNodeHash(&res.Hash)
+	fmt.Println("PrefixingTrieNodeHash 한 후: ", res.Hash)
 	elapsedTime := time.Since(startTime)
 	trie.TotalPrefixingOverhead += uint64(elapsedTime.Nanoseconds())
 	cnt++
@@ -485,6 +548,8 @@ func (s *stateSync) processNodeData(blob []byte) (bool, common.Hash, error) {
 	}
 
 	committed, _, err := s.sched.Process([]trie.SyncResult{res})
+	fmt.Println("committed", committed)
+	fmt.Println("#########################################################################################")
 	return committed, res.Hash, err
 }
 

@@ -207,6 +207,7 @@ func (p *peerConnection) FetchReceipts(request *fetchRequest) error {
 
 // FetchNodeData sends a node state data retrieval request to the remote peer.
 func (p *peerConnection) FetchNodeData(hashes []common.Hash) error {
+	fmt.Println("FetchNodeData()")
 	// Sanity check the protocol version
 	if p.version < 63 {
 		panic(fmt.Sprintf("node data fetch [eth/63+] requested on eth/%d", p.version))

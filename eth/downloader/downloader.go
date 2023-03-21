@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"os"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -45,12 +46,14 @@ var (
 	MaxSkeletonSize = 128 // Number of header fetches to need for a skeleton assembly
 	MaxBodyFetch    = 128 // Amount of block bodies to be fetched per retrieval request
 	MaxReceiptFetch = 256 // Amount of transaction receipts to allow fetching per request
-	MaxStateFetch   = 384 // Amount of node state values to allow fetching per request
+	// MaxStateFetch   = 384 // Amount of node state values to allow fetching per request
+	MaxStateFetch   = 16 // Amount of node state values to allow fetching per request
 
 	rttMinEstimate   = 2 * time.Second  // Minimum round-trip time to target for download requests
 	rttMaxEstimate   = 20 * time.Second // Maximum round-trip time to target for download requests
 	rttMinConfidence = 0.1              // Worse confidence factor in our estimated RTT value
 	ttlScaling       = 3                // Constant scaling factor for RTT -> TTL conversion
+	// ttlLimit         = time.Minute      // Maximum TTL allowance to prevent reaching crazy timeouts
 	ttlLimit         = time.Minute      // Maximum TTL allowance to prevent reaching crazy timeouts
 
 	qosTuningPeers   = 5    // Number of peers to tune based on (best peers)
@@ -321,6 +324,7 @@ func (d *Downloader) UnregisterPeer(id string) error {
 // Synchronise tries to sync up our local block chain with a remote peer, both
 // adding various sanity checks as well as wrapping it with various log entries.
 func (d *Downloader) Synchronise(id string, head common.Hash, td *big.Int, mode SyncMode) error {
+	fmt.Println("Synchronisze()")
 	err := d.synchronise(id, head, td, mode)
 	switch err {
 	case nil:
@@ -416,6 +420,7 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 // syncWithPeer starts a block synchronization based on the hash chain from the
 // specified peer and head hash.
 func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.Int) (err error) {
+	fmt.Println("syncWithPeer()")
 	d.mux.Post(StartEvent{})
 	defer func() {
 		// reset on error
@@ -427,23 +432,29 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 		}
 	}()
 	if p.version < 62 {
+		fmt.Println("어디서 드랍되서 에러가 난거야?! 1")
 		return errTooOld
 	}
 
 	log.Debug("Synchronising with the network", "peer", p.id, "eth", p.version, "head", hash, "td", td, "mode", d.mode)
+	fmt.Println("Synchronizing with the network", "peer", p.id, "eth", p.version, "head", hash, "td", td, "mode", d.mode)
 	defer func(start time.Time) {
 		log.Debug("Synchronisation terminated", "elapsed", common.PrettyDuration(time.Since(start)))
+		fmt.Println("Synchronization terminated", "elapsed", common.PrettyDuration(time.Since(start)))
+		os.Exit(1)
 	}(time.Now())
 
 	// Look up the sync boundaries: the common ancestor and the target block
 	latest, err := d.fetchHeight(p)
 	if err != nil {
+		fmt.Println("어디서 드랍되서 에러가 난거야?! 2")
 		return err
 	}
 	height := latest.Number.Uint64()
 
 	origin, err := d.findAncestor(p, latest)
 	if err != nil {
+		fmt.Println("어디서 드랍되서 에러가 난거야?! 3")
 		return err
 	}
 	d.syncStatsLock.Lock()
@@ -552,6 +563,7 @@ func (d *Downloader) spawnSync(fetchers []func() error) error {
 	}
 	d.queue.Close()
 	d.Cancel()
+	fmt.Println("어디서 드랍되서 에러가 난거야?! 5")
 	return err
 }
 
@@ -559,6 +571,7 @@ func (d *Downloader) spawnSync(fetchers []func() error) error {
 // not wait for the running download goroutines to finish. This method should be
 // used when cancelling the downloads from inside the downloader.
 func (d *Downloader) cancel() {
+	fmt.Println("downloader의 cancel()로 들어온건가")
 	// Close the current cancel channel
 	d.cancelLock.Lock()
 	if d.cancelCh != nil {
@@ -566,6 +579,7 @@ func (d *Downloader) cancel() {
 		case <-d.cancelCh:
 			// Channel was already closed
 		default:
+			fmt.Println("default로 들어왔음")
 			close(d.cancelCh)
 		}
 	}
@@ -575,6 +589,7 @@ func (d *Downloader) cancel() {
 // Cancel aborts all of the operations and waits for all download goroutines to
 // finish before returning.
 func (d *Downloader) Cancel() {
+	fmt.Println("downloader의 Cancel()")
 	d.cancel()
 	d.cancelWg.Wait()
 
@@ -624,6 +639,7 @@ func (d *Downloader) fetchHeight(p *peerConnection) (*types.Header, error) {
 			headers := packet.(*headerPack).headers
 			if len(headers) != 1 {
 				p.log.Debug("Multiple headers for single request", "headers", len(headers))
+				fmt.Println("**************** errBadPeer case 1 ****************")
 				return nil, errBadPeer
 			}
 			head := headers[0]
@@ -632,6 +648,7 @@ func (d *Downloader) fetchHeight(p *peerConnection) (*types.Header, error) {
 				return nil, errUnsyncedPeer
 			}
 			p.log.Debug("Remote head header identified", "number", head.Number, "hash", head.Hash())
+			fmt.Println("Remote head header identified", "number", head.Number, "hash", head.Hash())
 			return head, nil
 
 		case <-timeout:
@@ -856,6 +873,7 @@ func (d *Downloader) findAncestor(p *peerConnection, remoteHeader *types.Header)
 				headers := packer.(*headerPack).headers
 				if len(headers) != 1 {
 					p.log.Debug("Multiple headers for single request", "headers", len(headers))
+					fmt.Println("**************** errBadPeer case 2 ****************")
 					return 0, errBadPeer
 				}
 				arrived = true
@@ -880,6 +898,7 @@ func (d *Downloader) findAncestor(p *peerConnection, remoteHeader *types.Header)
 				header := d.lightchain.GetHeaderByHash(h) // Independent of sync mode, header surely exists
 				if header.Number.Uint64() != check {
 					p.log.Debug("Received non requested header", "number", header.Number, "hash", header.Hash(), "request", check)
+					fmt.Println("**************** errBadPeer case 3 ****************")
 					return 0, errBadPeer
 				}
 				start = check
@@ -1071,6 +1090,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, pivot uint64) 
 			case d.headerProcCh <- nil:
 			case <-d.cancelCh:
 			}
+			fmt.Println("**************** errBadPeer case 4 ****************")
 			return errBadPeer
 		}
 	}
@@ -1117,6 +1137,7 @@ func (d *Downloader) fillHeaderSkeleton(from uint64, skeleton []*types.Header) (
 // available peers, reserving a chunk of blocks for each, waiting for delivery
 // and also periodically checking for timeouts.
 func (d *Downloader) fetchBodies(from uint64) error {
+	fmt.Println("FETCH BODIES/from: ", from)
 	log.Debug("Downloading block bodies", "origin", from)
 
 	var (
@@ -1141,6 +1162,7 @@ func (d *Downloader) fetchBodies(from uint64) error {
 // available peers, reserving a chunk of receipts for each, waiting for delivery
 // and also periodically checking for timeouts.
 func (d *Downloader) fetchReceipts(from uint64) error {
+	fmt.Println("fetchReceipts/from: ", from)
 	log.Debug("Downloading transaction receipts", "origin", from)
 
 	var (
@@ -1272,6 +1294,7 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 						peer.log.Trace("Data delivery timed out", "type", kind)
 						setIdle(peer, 0)
 					} else {
+						fmt.Println("fails <= 2")
 						peer.log.Debug("Stalling delivery, dropping", "type", kind)
 
 						if d.dropPeer == nil {
@@ -1287,6 +1310,7 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 							d.cancelLock.RUnlock()
 
 							if master {
+								fmt.Println("downloader()의 cancel()을 부른 유력한 케이스")
 								d.cancel()
 								return errTimeout
 							}
@@ -1480,6 +1504,7 @@ func (d *Downloader) processHeaders(origin uint64, pivot uint64, td *big.Int) er
 							frequency = 1
 						}
 						if n, err := d.lightchain.InsertHeaderChain(chunk, frequency); err != nil {
+							fmt.Println("ERR from InsertHeaderChain(): ", err)
 							// If some headers were inserted, add them too to the rollback list
 							if n > 0 {
 								rollback = append(rollback, chunk[:n]...)
@@ -1508,6 +1533,7 @@ func (d *Downloader) processHeaders(origin uint64, pivot uint64, td *big.Int) er
 					inserts := d.queue.Schedule(chunk, origin)
 					if len(inserts) != len(chunk) {
 						log.Debug("Stale headers")
+						fmt.Println("**************** errBadPeer case 5 ****************")
 						return errBadPeer
 					}
 				}
@@ -1586,7 +1612,9 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 
 // processFastSyncContent takes fetch results from the queue and writes them to the
 // database. It also controls the synchronisation of state nodes of the pivot block.
+// mskim 
 func (d *Downloader) processFastSyncContent(latest *types.Header) error {
+	fmt.Println("processFastSyncContent()")
 	// Start syncing state of the reported head block. This should get us most of
 	// the state of the pivot block.
 	stateSync := d.syncState(latest.Root)
@@ -1615,12 +1643,14 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 		if len(results) == 0 {
 			// If pivot sync is done, stop
 			if oldPivot == nil {
+				fmt.Println("어디서 드랍되서 에러가 난거야?! 6")
 				return stateSync.Cancel()
 			}
 			// If sync failed, stop
 			select {
 			case <-d.cancelCh:
 				stateSync.Cancel()
+				fmt.Println("어디서 드랍되서 에러가 난거야?! 7")
 				return errCanceled
 			default:
 			}
@@ -1642,6 +1672,7 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 		}
 		P, beforeP, afterP := splitAroundPivot(pivot, results)
 		if err := d.commitFastSyncData(beforeP, stateSync); err != nil {
+			fmt.Println("어디서 드랍되서 에러가 난거야?! 8")
 			return err
 		}
 		if P != nil {
@@ -1662,9 +1693,11 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 			select {
 			case <-stateSync.done:
 				if stateSync.err != nil {
+					fmt.Println("어디서 드랍되서 에러가 난거야?! 9")
 					return stateSync.err
 				}
 				if err := d.commitPivotBlock(P); err != nil {
+					fmt.Println("어디서 드랍되서 에러가 난거야?! 10")
 					return err
 				}
 				oldPivot = nil
@@ -1676,6 +1709,7 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 		}
 		// Fast sync done, pivot commit done, full import
 		if err := d.importBlockResults(afterP); err != nil {
+			fmt.Println("어디서 드랍되서 에러가 난거야?! 11")
 			return err
 		}
 	}
@@ -1705,7 +1739,10 @@ func (d *Downloader) commitFastSyncData(results []*fetchResult, stateSync *state
 	case <-d.quitCh:
 		return errCancelContentProcessing
 	case <-stateSync.done:
+		fmt.Println("commitFastSyncData() 내부 case <-stateSync.done")
+
 		if err := stateSync.Wait(); err != nil {
+			fmt.Println("stateSync.Wait() 가 에러를 내뱉은 상황")
 			return err
 		}
 	default:
@@ -1771,12 +1808,14 @@ func (d *Downloader) DeliverReceipts(id string, receipts [][]*types.Receipt) (er
 
 // DeliverNodeData injects a new batch of node state data received from a remote node.
 func (d *Downloader) DeliverNodeData(id string, data [][]byte) (err error) {
+	fmt.Println("DeliverNodeData()")
 	return d.deliver(id, d.stateCh, &statePack{id, data}, stateInMeter, stateDropMeter)
 }
 
 // deliver injects a new batch of data received from a remote node.
 func (d *Downloader) deliver(id string, destCh chan dataPack, packet dataPack, inMeter, dropMeter metrics.Meter) (err error) {
 	// Update the delivery metrics for both good and failed deliveries
+	fmt.Println("deliver()")
 	inMeter.Mark(int64(packet.Items()))
 	defer func() {
 		if err != nil {
@@ -1788,12 +1827,15 @@ func (d *Downloader) deliver(id string, destCh chan dataPack, packet dataPack, i
 	cancel := d.cancelCh
 	d.cancelLock.RUnlock()
 	if cancel == nil {
+		fmt.Println("여기로 들어온거야 지금?")
 		return errNoSyncActive
 	}
 	select {
 	case destCh <- packet:
+		fmt.Println("destCh <- packet: ")
 		return nil
 	case <-cancel:
+		fmt.Println("<-cancel: ")
 		return errNoSyncActive
 	}
 }

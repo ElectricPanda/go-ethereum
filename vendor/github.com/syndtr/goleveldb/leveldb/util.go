@@ -11,11 +11,12 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"encoding/hex"
 
 	"github.com/syndtr/goleveldb/leveldb/storage"
 )
 
-var LogFilePath = "./experiment/impt_log_files/impt_which_level.txt"
+var LogFilePath = "/home/minseokk1m/TH-PriorityQueueEnhance/logs/th_enhance_which_level_1.txt"
 
 func shorten(str string) string {
 	if len(str) <= 8 {
@@ -102,7 +103,7 @@ func ensureBuffer(b []byte, n int) []byte {
 }
 
 // logLevelInfo logs which level the value is found at (jmlee)
-func logLevelInfo(level int) {
+func logLevelInfo(level int, key [] byte) {
 	return
 	// append or write logData to file
 	f, err := os.OpenFile(LogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -110,7 +111,14 @@ func logLevelInfo(level int) {
 		fmt.Println("ERR:", err)
 		// log.Info("ERR", "err", err)
 	}
-	logData := "find the value at " + strconv.Itoa(level)
-	fmt.Fprintln(f, logData)
+
+	temp := hex.EncodeToString(key)
+	if(len(temp) != 64) { 
+		f.Close() 
+	} else {
+	logData0 := "Found key: " + hex.EncodeToString(key)
+	logData1 := "Fount at level:  " + strconv.Itoa(level)
+	fmt.Fprintln(f, logData0, logData1)
 	f.Close()
+	}
 }

@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	// "bufio"
 
 	"github.com/ethereum/go-ethereum/internal/jsre"
 	"github.com/ethereum/go-ethereum/internal/web3ext"
@@ -275,6 +276,35 @@ func (c *Console) AutoCompleteInput(line string, pos int) (string, []string, str
 // Welcome show summary of current Geth instance and some metadata about the
 // console's available modules.
 func (c *Console) Welcome() {
+	// code to generate descendingorderhash of all nodes (mskim)
+	// var filePath = "/home/minseokk1m/TH-PriorityQueueEnhance/logs/0212_TH_sort.txt" // file storing descendingorderhashes (mskim)
+
+	// file, err := os.Open(filePath)
+	// if err != nil {
+	// 	fmt.Println("Error opening file:", err)
+	// 	return
+	// }
+	// defer file.Close()
+
+	// scanner := bufio.NewScanner(file)
+	// for scanner.Scan() {
+	// 	line := scanner.Text()
+	// 	Firstfields := strings.Split(line, ":")
+	// 	parse := strings.TrimSpace(Firstfields[1])
+	// 	fields := strings.Fields(parse)
+	// 	hash := fields[0]
+	// 	common.DescendingOrderNodeHash = append(common.DescendingOrderNodeHash, hash)
+	// }
+
+	// if err := scanner.Err(); err != nil {
+	// 	fmt.Println("Error reading file:", err)
+	// 	return
+	// }
+
+	// fmt.Println("len of DescendingOrderNodeHash: ", len(common.DescendingOrderNodeHash))
+	// fmt.Println("common.DescendingOrderNodeHash[처음]: ", common.DescendingOrderNodeHash[1])
+	// fmt.Println("common.DescendingOrderNodeHash[마지막]: ", common.DescendingOrderNodeHash[len(common.DescendingOrderNodeHash)-1])
+
 	message := "Welcome to the Geth JavaScript console!\n\n"
 
 	// Print some generic Geth metadata

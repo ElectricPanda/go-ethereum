@@ -20,11 +20,67 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"strconv"
+	"os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
+
+var ReceiverPopFilePath = "/data/trieHashimoto/th_experiment_data_3/logs/batch1/setHead_100000_cache_10G_depth+[0:9]_pop.txt"
+var ReceiverPushFilePath = "/data/trieHashimoto/th_experiment_data_3/logs/batch1/setHead_100000_cache_10G_depth+[0:9]_push.txt"
+
+//mskim
+func logQueuePush(input string, priority int, queueSize int, requestSize int, time time.Duration){
+	f, err := os.OpenFile(ReceiverPushFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERR:", err)
+	}
+
+	HashData:= "PUSHED Hash: "+ input
+	PriorityData := "Priority: " + strconv.Itoa(priority)
+	queueSizeData := "Queue Size: " + strconv.Itoa(queueSize)
+	requestSizeData := "Request Size: " + strconv.Itoa(requestSize)
+	timeData := "Took time: "+ strconv.Itoa(int(time.Nanoseconds()))
+
+	fmt.Fprintln(f, HashData, PriorityData,  queueSizeData, requestSizeData, timeData)
+	f.Close()
+}
+
+func logQueuePushNewLine(){
+	f, err := os.OpenFile(ReceiverPushFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERR:", err)
+	}
+	fmt.Fprintln(f,"")
+	f.Close()
+}
+
+func logQueuePop(input string, priority int, queueSize int, requestSize int, time time.Duration){
+	f, err := os.OpenFile(ReceiverPopFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERR:", err)
+	}
+
+	HashData := "POPPED Hash: " + input
+	PriorityData := "Priority: " + strconv.Itoa(priority)
+	queueSizeData := "Queue Size: " + strconv.Itoa(queueSize)
+	requestSizeData := "Request Size: " + strconv.Itoa(requestSize)
+	timeData := "Took time: " + strconv.Itoa(int(time.Nanoseconds()))
+
+	fmt.Fprintln(f, HashData, PriorityData, queueSizeData, requestSizeData, timeData)
+	f.Close()
+}
+
+func logQueuePopNewLine(){
+	f, err := os.OpenFile(ReceiverPopFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERR:", err)
+	}
+	fmt.Fprintln(f,"")
+	f.Close()
+}
 
 // overhead of correctly prefixing for fake IMPT data (nanoseconds)
 var TotalPrefixingOverhead uint64 = 0
@@ -134,7 +190,9 @@ func (s *Sync) AddSubTrie(root common.Hash, depth int, parent common.Hash, callb
 		ancestor.deps++
 		req.parents = append(req.parents, ancestor)
 	}
+	fmt.Println("AddSubTrie schedule()")
 	s.schedule(req)
+	logQueuePushNewLine()
 }
 
 // AddRawEntry schedules the direct retrieval of a state entry that should not be
@@ -172,15 +230,43 @@ func (s *Sync) AddRawEntry(hash common.Hash, depth int, parent common.Hash) {
 		ancestor.deps++
 		req.parents = append(req.parents, ancestor)
 	}
+	fmt.Println("AddRawEntry schedule()")
 	s.schedule(req)
 }
 
 // Missing retrieves the known missing nodes from the trie for retrieval.
 func (s *Sync) Missing(max int) []common.Hash {
+	fmt.Println("Missing() max: ", max)
 	var requests []common.Hash
 	for !s.queue.Empty() && (max == 0 || len(requests) < max) {
-		requests = append(requests, s.queue.PopItem().(common.Hash))
+		start2 := time.Now()
+		// var temp = s.queue.PopItem().(common.Hash)
+		var tempValue, tempPriority = s.queue.Pop()
+		var temp = tempValue.(common.Hash)
+		elapsed2 := time.Since(start2)
+		fmt.Println("&&&&&&&&&&&&&&&&: elapsed s.queue.PopItem time: ", elapsed2)
+		fmt.Println("PopItem() len(s.queue): ", s.queue.Size())
+
+		requests = append(requests, temp)
+		logQueuePop(temp.Hex(), int(tempPriority), s.queue.Size(), len(s.requests), elapsed2)
 	}
+
+	// code to send node requests in strictly descending order(a.k.a. benchmark) (mskim)
+	// for (common.DescendingOrderNodeHashPopIndex < len(common.DescendingOrderNodeHash))  && (max == 0 || len(requests) < max){
+
+	// 	PoppedNodeHash := common.HexToHash(common.DescendingOrderNodeHash[common.DescendingOrderNodeHashPopIndex])
+	// 	requests = append(requests,PoppedNodeHash)
+	// 	common.DescendingOrderNodeHashPopIndex++
+
+	// 	//전처리
+	// 	prefixLen := PrefixLength*2 + 2
+	// 	hashWithoutPrefix := string([]rune(PoppedNodeHash.Hex())[prefixLen:])
+	// 	s.hashes[hashWithoutPrefix] = PoppedNodeHash
+
+	// 	logQueuePop(common.DescendingOrderNodeHash[common.DescendingOrderNodeHashPopIndex], 888888888, 888888888, len(s.requests), 888888888)
+	// }
+
+	logQueuePopNewLine()
 	return requests
 }
 
@@ -188,11 +274,20 @@ func (s *Sync) Missing(max int) []common.Hash {
 // was committed to the database and also the index of an entry if processing of
 // it failed.
 func (s *Sync) Process(results []SyncResult) (bool, int, error) {
+	var k = 0;
+	fmt.Println("Process() 인자로 results 받았고 그 길이는: ", len(results))
 	committed := false
 
+	fmt.Println("length of s.queue: ", s.queue.Size())
+	fmt.Println("length of s.requests: ", len(s.requests))
+
 	for i, item := range results {
+		fmt.Println("이게 Process()안에서 몇번째 iteration이냐면: ", k)
+		k++
 		// If the item was not requested, bail out
 		request := s.requests[item.Hash]
+		fmt.Println("item.Hash: ", item.Hash.Hex())
+		fmt.Println("request from s.requests[item.Hash]: ", request)
 		if request == nil {
 			return committed, i, ErrNotRequested
 		}
@@ -201,6 +296,7 @@ func (s *Sync) Process(results []SyncResult) (bool, int, error) {
 		}
 		// If the item is a raw entry request, commit directly
 		if request.raw {
+			fmt.Println("request.raw: ")
 			request.data = item.Data
 			s.commit(request)
 			committed = true
@@ -214,19 +310,23 @@ func (s *Sync) Process(results []SyncResult) (bool, int, error) {
 		request.data = item.Data
 
 		// Create and schedule a request for all the children nodes
+		fmt.Println("node: ", node)
 		requests, err := s.children(request, node)
 		if err != nil {
 			return committed, i, err
 		}
 		if len(requests) == 0 && request.deps == 0 {
+			fmt.Println("len(requests) == 0 (즉 노드의 children이 없는 경우) && request.deps == 0")
 			s.commit(request)
 			committed = true
 			continue
 		}
 		request.deps += len(requests)
+		fmt.Println("요청하고자하는 child node의 개수: ", len(requests))
 		for _, child := range requests {
 			s.schedule(child)
 		}
+		logQueuePushNewLine()
 	}
 	return committed, 0, nil
 }
@@ -256,23 +356,81 @@ func (s *Sync) Pending() int {
 // schedule inserts a new state retrieval request into the fetch queue. If there
 // is already a pending request for this node, the new request will be discarded
 // and only a parent reference added to the old one.
+var tempCount = 0
 func (s *Sync) schedule(req *request) {
 	// If we're already requesting this node, add a new reference and stop
+	fmt.Println("schedule()")
+	fmt.Println("schedule(): ", req.hash.Hex())
 	if old, ok := s.requests[req.hash]; ok {
+		fmt.Println("inside old check")
+		os.Exit(1)
 		old.parents = append(old.parents, req.parents...)
 		return
 	}
+	prefixLen := PrefixLength*2 +2// = blockNumberLen + "0x"
+
 	// Schedule the request for future retrieval
-	s.queue.Push(req.hash, int64(req.depth))
+	// TH/GETH (when checking benchmark, we must comment out this part)
+	// priority := int64(req.depth)
+	// fmt.Println("Push(): ", req.hash.Hex(), "Priority: ", priority)
+	// start1 := time.Now()
+	// s.queue.Push(req.hash, priority)
+	// elapsed1 := time.Since(start1)
+	// fmt.Println("Push() 이후의 len(s.queue): ", s.queue.Size())
+	// 싱크가 처음부터 다시 되었는지 탐지하는 코드 (mskim)
+	// if(req.hash.Hex() == "0x007a12008815e97fc0b9d433fffe823e25db538c37685cb68a98c83bc5f2658d"){
+	// 	tempCount++
+	// 	if(tempCount==2){
+	// 		os.Exit(1)
+	// 	}
+	// }
+
+    // ENHANCED (when checking benchmark, we must comment out this part)
+	// Prefix := (req.hash.Hex())[0:10]
+	// Prefix := (req.hash.Hex())[0:9] + strconv.FormatInt(int64(req.depth), 16)
+	Prefix := "0x" + strconv.FormatInt(int64(req.depth), 16) + (req.hash.Hex())[2:10]
+	// fmt.Println("strconv.FormatInt(int64(req.depth), 16): ", strconv.FormatInt(int64(req.depth), 16))
+	// fmt.Println("(req.hash.Hex())[2:10]: ", (req.hash.Hex())[2:10])
+	// fmt.Println("PREFIX: ", Prefix)
+	// Prefix := (req.hash.Hex())[0:9]
+	PrefixInt64, err := strconv.ParseInt(Prefix, 0, 64)
+	if err!=nil {
+		fmt.Println("ERR in TH ENHANCE SYNC: ", err)
+		os.Exit(1)
+	}
+
+	priority := PrefixInt64
+	fmt.Println("Push(): ", req.hash.Hex(), "Priority: ", priority)
+	start1 := time.Now()
+	s.queue.Push(req.hash,priority)
+	elapsed1 := time.Since(start1)
+	// fmt.Println("&&&&&&&&&&&&&&&&: childnode를 queue 에 넣는 데 걸린 시간 (s.queue.Push time): ", elapsed1)
+	fmt.Println("Push() 후 len(s.queue): ", s.queue.Size())
+	// 싱크가 처음부터 다시 되었는지 탐지하는 코드 (mskim)
+	if(req.hash.Hex() == "0x007a12008815e97fc0b9d433fffe823e25db538c37685cb68a98c83bc5f2658d"){
+			tempCount++
+			if(tempCount==2){
+				os.Exit(1)
+			}
+		}
+
+
+	
+	// fmt.Println("Push() 후 length of s.requests BEFORE: ", len(s.requests))
 	s.requests[req.hash] = req
+	fmt.Println("Push() 후 length of s.requests AFTER: ", len(s.requests))
+	logQueuePush(req.hash.Hex(), int(priority), s.queue.Size(), len(s.requests), elapsed1)
 
 	// insert hash info for syncing with fake TH data (jmlee)
-	startTime := time.Now()
-	prefixLen := PrefixLength*2 + 2 // = blockNumberLen + "0x"
+	// startTime := time.Now()
+	// prefixLen := PrefixLength*2 + 2 // = blockNumberLen + "0x"
+
+	// 전처리: realHash's suffix to FakeHash mapping
 	hashWithoutPrefix := string([]rune(req.hash.Hex())[prefixLen:])
 	s.hashes[hashWithoutPrefix] = req.hash
-	elapsedTime := time.Since(startTime)
-	TotalPrefixingOverhead += uint64(elapsedTime.Nanoseconds())
+
+	// elapsedTime := time.Since(startTime)
+	// TotalPrefixingOverhead += uint64(elapsedTime.Nanoseconds())
 	// fmt.Println("hashWithoutPrefix:", hashWithoutPrefix, "/ fakeHash:", req.hash.Hex())
 }
 
@@ -346,11 +504,15 @@ func (s *Sync) children(req *request, object node) ([]*request, error) {
 // of the referencing parent requests complete due to this commit, they are also
 // committed themselves.
 func (s *Sync) commit(req *request) (err error) {
+	fmt.Println("commit()")
 	// Write the node content to the membatch
 	s.membatch.batch[req.hash] = req.data
 	s.membatch.order = append(s.membatch.order, req.hash)
 
 	delete(s.requests, req.hash)
+	fmt.Println("***AFTER: commit(), length of s.requests: ", len(s.requests))
+	common.TotalCommit++
+	fmt.Println("Total commit(Leaf node)횟수: ", common.TotalCommit, "Queue depth: ", int64(req.depth))
 
 	// delete hash info for syncing with fake TH data (jmlee)
 	startTime := time.Now()
@@ -361,9 +523,12 @@ func (s *Sync) commit(req *request) (err error) {
 	TotalPrefixingOverhead += uint64(elapsedTime.Nanoseconds())
 
 	// Check all parents for completion
+	fmt.Println("commit 과정에서 노드의 parent에 대해서")
+	fmt.Println("몇개 parent 남았지?: length of req.parents: ", len(req.parents))
 	for _, parent := range req.parents {
 		parent.deps--
 		if parent.deps == 0 {
+			fmt.Println("자녀가 commit됨으로 인해 parent가 더이상 reference하는게 없으면, parent도 commit 시킨다")
 			if err := s.commit(parent); err != nil {
 				return err
 			}
@@ -373,6 +538,7 @@ func (s *Sync) commit(req *request) (err error) {
 }
 
 // forcely change trie node's hash value for syncing with fake TH data (jmlee)
+// 후처리 : realHash-> fakeHash
 func (s *Sync) PrefixingTrieNodeHash(resHash *common.Hash) {
 	
 	prefixLen := PrefixLength*2 + 2 // = blockNumberLen + "0x"
@@ -384,6 +550,11 @@ func (s *Sync) PrefixingTrieNodeHash(resHash *common.Hash) {
 		// fmt.Println("resHash:", resHash.Hex(), "/ fakeHash:", fakeHash.Hex())
 		*resHash = fakeHash
 		return
+	} else {
+		// 전처리가 안된 부분을 탐지하는 코드 (mskim)
+		fmt.Println("PrefixingTrieNodeHash() not matched's subStr1: ", subStr1)
+		fmt.Println("PrefixingTrieNodeHash() not matched's resHash: ", resHash.Hex())
+		fmt.Println("PrefixingTrieNodeHash() not matched's resHash: ", fakeHash )
 	}
 	
 }

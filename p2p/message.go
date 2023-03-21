@@ -90,6 +90,7 @@ type MsgReadWriter interface {
 // Send writes an RLP-encoded message with the given code.
 // data should encode as an RLP list.
 func Send(w MsgWriter, msgcode uint64, data interface{}) error {
+	fmt.Println("Send() and the data is: ")
 	size, r, err := rlp.EncodeToReader(data)
 	if err != nil {
 		return err
@@ -122,6 +123,7 @@ type eofSignal struct {
 // note: when using eofSignal to detect whether a message payload
 // has been read, Read might not be called for zero sized messages.
 func (r *eofSignal) Read(buf []byte) (int, error) {
+	fmt.Println("Read()")
 	if r.count == 0 {
 		if r.eof != nil {
 			r.eof <- struct{}{}
@@ -172,6 +174,7 @@ type MsgPipeRW struct {
 // WriteMsg sends a message on the pipe.
 // It blocks until the receiver has consumed the message payload.
 func (p *MsgPipeRW) WriteMsg(msg Msg) error {
+	fmt.Println("WriteMsg() 0")
 	if atomic.LoadInt32(p.closed) == 0 {
 		consumed := make(chan struct{}, 1)
 		msg.Payload = &eofSignal{msg.Payload, msg.Size, consumed}
@@ -193,6 +196,7 @@ func (p *MsgPipeRW) WriteMsg(msg Msg) error {
 
 // ReadMsg returns a message sent on the other end of the pipe.
 func (p *MsgPipeRW) ReadMsg() (Msg, error) {
+	fmt.Println("ReadMsg() 0")
 	if atomic.LoadInt32(p.closed) == 0 {
 		select {
 		case msg := <-p.r:
@@ -220,6 +224,7 @@ func (p *MsgPipeRW) Close() error {
 // code and encoded RLP content match the provided values.
 // If content is nil, the payload is discarded and not verified.
 func ExpectMsg(r MsgReader, code uint64, content interface{}) error {
+	fmt.Println("ExpectMsg()")
 	msg, err := r.ReadMsg()
 	if err != nil {
 		return err
@@ -275,6 +280,7 @@ func newMsgEventer(rw MsgReadWriter, feed *event.Feed, peerID enode.ID, proto, r
 // ReadMsg reads a message from the underlying MsgReadWriter and emits a
 // "message received" event
 func (ev *msgEventer) ReadMsg() (Msg, error) {
+	fmt.Println("ReadeMsg() 1")
 	msg, err := ev.MsgReadWriter.ReadMsg()
 	if err != nil {
 		return msg, err
@@ -294,6 +300,7 @@ func (ev *msgEventer) ReadMsg() (Msg, error) {
 // WriteMsg writes a message to the underlying MsgReadWriter and emits a
 // "message sent" event
 func (ev *msgEventer) WriteMsg(msg Msg) error {
+	fmt.Println("WriteMsg() 1")
 	err := ev.MsgReadWriter.WriteMsg(msg)
 	if err != nil {
 		return err

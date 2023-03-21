@@ -14,6 +14,7 @@ import (
 	"unsafe"
 	"os"
 
+	// "github.com/ethereum/go-ethereum/common"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -91,7 +92,8 @@ func (v *version) release() {
 
 // write leveldb table log to the file (jmlee)
 func writeTableLog(log string) {
-	f, err := os.OpenFile("./experiment/impt_leveldb_table_log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// f, err := os.OpenFile("./experiment/impt_leveldb_table_log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile("/home/minseokk1m/TH-PriorityQueueEnhance/logs/impt_leveldb_table_log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Println("ERR:", err)
 		// log.Info("ERR", "err", err)
@@ -267,9 +269,10 @@ func (v *version) get(aux tFiles, ikey internalKey, ro *opt.ReadOptions, noValue
 					switch fkt {
 					case keyTypeVal:
 						// fmt.Println("@@FIND THE VALUE!: at level", level) // 여긴 level1 이상이 나옴
-						logLevelInfo(level)
+						// logLevelInfo(level, ukey)
 						value = fval
 						err = nil
+						// common.LevelDBNodeFrom = level
 					case keyTypeDel:
 					default:
 						panic("leveldb: invalid internalKey type")
@@ -294,9 +297,10 @@ func (v *version) get(aux tFiles, ikey internalKey, ro *opt.ReadOptions, noValue
 			switch zkt {
 			case keyTypeVal:
 				// fmt.Println("@FIND THE VALUE!: at level", level) // 여긴 level0가 나옴
-				logLevelInfo(level)
+				// logLevelInfo(level, ukey)
 				value = zval
 				err = nil
+				// common.LevelDBNodeFrom = level
 			case keyTypeDel:
 			default:
 				panic("leveldb: invalid internalKey type")

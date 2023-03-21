@@ -13,8 +13,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	// "encoding/hex"
+	// "time"
 
 	"github.com/golang/snappy"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/syndtr/goleveldb/leveldb/cache"
 	"github.com/syndtr/goleveldb/leveldb/comparer"
@@ -616,15 +619,45 @@ func (r *Reader) readBlock(bh blockHandle, verifyChecksum bool) (*block, error) 
 }
 
 func (r *Reader) readBlockCached(bh blockHandle, verifyChecksum, fillCache bool) (*block, util.Releaser, error) {
+	// fmt.Println("LevelDB Reader 내부 *** bh", bh)
+	// fmt.Println("LevelDB Reader 내부 *** verifyChecksum", verifyChecksum)
+	// fmt.Println("LevelDB Reader 내부 *** fillCache", fillCache)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.mu", r.mu)
+
+	// fmt.Println("LevelDB Reader 내부 *** Reader.reader", r.reader)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.cache", r.cache)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.bpool", r.bpool)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.o", r.o)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.cmp", r.cmp)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.filter", r.filter)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.dataEnd", r.dataEnd)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.metaBH", r.metaBH)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.indexBH", r.indexBH)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.filterBH", r.filterBH)
+	// fmt.Println("***************************************", r.filterBH.length )
+	// fmt.Println("LevelDB Reader 내부 *** Reader.indexBlock", r.indexBlock)
+	// fmt.Println("LevelDB Reader 내부 *** Reader.filterBlock", r.filterBlock)
+
 	if r.cache != nil {
+		// fmt.Println("LevelDB Reader 내부 *** r.cache 이 뭐가 있음!")
 		var (
 			err error
 			ch  *cache.Handle
 		)
 		if fillCache {
+			// fmt.Println("LevelDB Reader 내부 *** fillCache ")
 			ch = r.cache.Get(bh.offset, func() (size int, value cache.Value) {
+				// Get()함수 자체는 항상 불리고 처리가 되나, Get()함수의 파라미터로 들어오고 있는 이 함수는 캐쉬가 안 일어나는 상황에서는 불리고, 캐쉬 히트가 난 상황에서는 불리지 않음) (mskim)
+				// if(r.filterBH.length !=0 ) {fmt.Println("********* LevelDB Cache Miss!!! **************")} // (mskim)
+				// if(r.filterBH.length !=0 ) {common.LevelDBCacheMissFromSyncCount++} // mskim (여기서 카운트하면 getDataIter 나 getIndexBlock에서 부르는 두 경우가 모두 카운트되니까 밖으로 가지고 나가는게 적절할듯)
+				if(r.filterBH.length !=0) {common.LevelDBCacheMissFromSync = true}
+				// if(r.filterBH.length !=0 ) {fmt.Println("common.LevelDBCacheMissFromSync", common.LevelDBCacheMissFromSync)}
+				
 				var b *block
+				// start:= time.Now()
 				b, err = r.readBlock(bh, verifyChecksum)
+				// end:= time.Since(start)
+				// if(r.filterBH.length !=0 ) {fmt.Println("LevelDB Cache Miss readBlock() time elapsed: ", end)}
 				if err != nil {
 					return 0, nil
 				}
@@ -826,13 +859,18 @@ func (r *Reader) find(key []byte, filtered bool, ro *opt.ReadOptions, noValue bo
 		return
 	}
 
+	// start0 := time.Now()
 	indexBlock, rel, err := r.getIndexBlock(true)
+	// start1 := time.Since(start0)
+	// fmt.Println("Reader.getIndexBlock Time: ", start1)
+	// if(len(hexKey)== 80){fmt.Println("indexBlock: ", indexBlock)}
 	if err != nil {
 		return
 	}
 	defer rel.Release()
 
 	index := r.newBlockIter(indexBlock, nil, nil, true)
+	// if(len(hexKey)== 80){fmt.Println("leveldb/table/reader.go index: ", index)} // mskim
 	defer index.Release()
 
 	if !index.Seek(key) {
@@ -843,6 +881,7 @@ func (r *Reader) find(key []byte, filtered bool, ro *opt.ReadOptions, noValue bo
 	}
 
 	dataBH, n := decodeBlockHandle(index.Value())
+	// if(len(hexKey)== 80){fmt.Println("leveldb/table/reader.go dataBH: ", dataBH)} //mskim
 	if n == 0 {
 		r.err = r.newErrCorruptedBH(r.indexBH, "bad data block handle")
 		return nil, nil, r.err
@@ -862,7 +901,11 @@ func (r *Reader) find(key []byte, filtered bool, ro *opt.ReadOptions, noValue bo
 		}
 	}
 
+	// start5 := time.Now()
 	data := r.getDataIter(dataBH, nil, r.verifyChecksum, !ro.GetDontFillCache())
+	// start6 := time.Since(start5);
+	// fmt.Println("Reader.getDataIter Time: ", start6)
+	// if(len(hexKey)== 80){fmt.Println("leveldb/table/reader.go data: ", data)}
 	if !data.Seek(key) {
 		data.Release()
 		if err = data.Error(); err != nil {

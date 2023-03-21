@@ -21,6 +21,7 @@ import (
 	"errors"
 	"math/rand"
 	"time"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
@@ -176,6 +177,7 @@ func New(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBloc
 // hash notifications and block fetches until termination requested.
 func (f *Fetcher) Start() {
 	go f.loop()
+	fmt.Println("Fetcher의 Start()가 끝난게야")
 }
 
 // Stop terminates the announcement based synchroniser, canceling all pending
@@ -315,10 +317,12 @@ func (f *Fetcher) loop() {
 		// Wait for an outside event to occur
 		select {
 		case <-f.quit:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 <-f.quit:")
 			// Fetcher terminating, abort all operations
 			return
 
 		case notification := <-f.notify:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 notification := <-f.notify:")
 			// A block was announced, make sure the peer isn't DOSing us
 			propAnnounceInMeter.Mark(1)
 
@@ -353,16 +357,19 @@ func (f *Fetcher) loop() {
 			}
 
 		case op := <-f.inject:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 op := <-f.inject:")
 			// A direct block insertion was requested, try and fill any pending gaps
 			propBroadcastInMeter.Mark(1)
 			f.enqueue(op.origin, op.block)
 
 		case hash := <-f.done:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 hash := <-f.done:")
 			// A pending import finished, remove all traces of the notification
 			f.forgetHash(hash)
 			f.forgetBlock(hash)
 
 		case <-fetchTimer.C:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 <-fetchTimer.C:")
 			// At least one block's timer ran out, check for needing retrieval
 			request := make(map[string][]common.Hash)
 
@@ -399,6 +406,7 @@ func (f *Fetcher) loop() {
 			f.rescheduleFetch(fetchTimer)
 
 		case <-completeTimer.C:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 <-completeTimer.C:")
 			// At least one header's timer ran out, retrieve everything
 			request := make(map[string][]common.Hash)
 
@@ -428,6 +436,7 @@ func (f *Fetcher) loop() {
 			f.rescheduleComplete(completeTimer)
 
 		case filter := <-f.headerFilter:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 filter := <-f.headerFilter:")
 			// Headers arrived from a remote peer. Extract those that were explicitly
 			// requested by the fetcher, and return everything else so it's delivered
 			// to other parts of the system.
@@ -506,6 +515,7 @@ func (f *Fetcher) loop() {
 			}
 
 		case filter := <-f.bodyFilter:
+			fmt.Println("Fetcher의 loop() 함수의 케이스 중 filter := <-f.bodyFilter:")
 			// Block bodies arrived, extract any explicitly requested blocks, return the rest
 			var task *bodyFilterTask
 			select {

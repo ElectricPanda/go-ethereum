@@ -259,6 +259,7 @@ func (db *DB) NodeSeq(id ID) uint64 {
 // Resolve returns the stored record of the node if it has a larger sequence
 // number than n.
 func (db *DB) Resolve(n *Node) *Node {
+	fmt.Println("Resolve()")
 	if n.Seq() > db.NodeSeq(n.ID()) {
 		return n
 	}

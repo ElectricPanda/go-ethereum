@@ -58,6 +58,44 @@ var (
 	IsRolledBack = false
 	// temp var to know where did geth get the trie node from (c: clean cache, d: dirty cache, p: persist db) ("c","d" mean memory cache)
 	TrieNodeFrom = "p"
+	// temp var to see Trie memcacache clean Hit count of sender node during from sync process
+	TrieCacheHitFromSync = 0
+	// temp var to see Trie memcacache dirty Hit count of sender node during from sync process
+	TrieCacheDirtyHitFromSync = 0
+	// temp var to see Trie memcacache Miss count of sender node during from sync process
+	TrieCacheMissFromSync = 0
+
+	GetCalledHowManyTimes = 0
+
+	GetForLoopIterateHowManyTime = 0
+
+	CleanCacheHitFromSyncCount = 0
+	CleanCacheHitFromSync = false
+	DirtyCacheHitFromSyncCount = 0
+	DirtyCacheHitFromSync = false
+
+	LevelDBCacheMissFromSyncCount = 0
+	LevelDBCacheMissFromSync = false
+	RequestedNodeNumberFromSync = 0 
+
+	DescendingOrderNodeHash []string
+	DescendingOrderNodeHashPopIndex = 1
+
+	TotalCommit = 0
+
+	// temp var to know where did geth get the trie node from (-1: leveldb memory, 0~: corresponding leveldb levels)
+	// LevelDBNodeFrom = -2
+	// temp var to see LevelDb memory Hit count of sender node during from sync process
+	// LevelDBCacheHitFromSync = 0
+	// temp var to see LevelDb memory Miss count of sender node during from sync process
+	// LevelDBLevel0HitFromSync = 0
+	// LevelDBLevel1HitFromSync = 0
+	// LevelDBLevel2HitFromSync = 0
+	// LevelDBLevel3HitFromSync = 0
+	// LevelDBLevel4HitFromSync = 0
+	// LevelDBLevel5HitFromSync = 0
+	// LevelDBLevelBeyond5HitFromSync = 0
+
 	// temp var to measure more specific mining time
 	MiningTimes []int64
 	// temp var to measure more specific mining time (BlockMiningTimes[threadNum] = mining time array)

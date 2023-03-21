@@ -508,6 +508,7 @@ func (s *Ethereum) ArchiveMode() bool                  { return s.config.NoPruni
 // Protocols implements node.Service, returning all the currently configured
 // network protocols to start.
 func (s *Ethereum) Protocols() []p2p.Protocol {
+	fmt.Println("Protocols()") // (mskim)
 	protos := make([]p2p.Protocol, len(ProtocolVersions))
 	for i, vsn := range ProtocolVersions {
 		protos[i] = s.protocolManager.makeProtocol(vsn)

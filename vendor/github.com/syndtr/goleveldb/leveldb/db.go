@@ -16,7 +16,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	// "encoding/hex"
 
+	// "github.com/ethereum/go-ethereum/common"
 	"github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/journal"
@@ -768,7 +770,9 @@ func (db *DB) get(auxm *memdb.DB, auxt tFiles, key []byte, seq uint64, ro *opt.R
 
 	// Get() 함수에서 auxm = nil로 들어오기에 여긴 무시 (jmlee)
 	if auxm != nil {
+		fmt.Println("auxm 이 nil이 아님")
 		if ok, mv, me := memGet(auxm, ikey, db.s.icmp); ok {
+			fmt.Println("memGet()으로도 들어옴!")
 			return append([]byte{}, mv...), me
 		}
 	}
@@ -785,9 +789,13 @@ func (db *DB) get(auxm *memdb.DB, auxt tFiles, key []byte, seq uint64, ro *opt.R
 		}
 		defer m.decref()
 
+		// fmt.Println("ikey to Hex: ", hex.EncodeToString(ikey))
 		if ok, mv, me := memGet(m.DB, ikey, db.s.icmp); ok {
+			// fmt.Println("ok, mv, me", ok , mv, me)
+			// fmt.Println("mv to Hex: ", hex.EncodeToString(mv))
+			// common.LevelDBNodeFrom = -1
 			// fmt.Println("@@@ FIND THE VALUE!: at memory")
-			logLevelInfo(-1) // -1 means memorydb
+			// logLevelInfo(-1, ikey) // -1 means memorydb
 			return append([]byte{}, mv...), me
 		}
 	}

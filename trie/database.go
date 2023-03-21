@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"os"
+	// "encoding/hex"
 
 	"github.com/allegro/bigcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -230,6 +232,41 @@ var cachedNodeSize = int(reflect.TypeOf(cachedNode{}).Size())
 // cachedNodeChildrenSize is the raw size of an initialized but empty external
 // reference map.
 const cachedNodeChildrenSize = 48
+
+var SenderFilePath = "/data/trieHashimoto/th_experiment_data_3/logs/batch1/setHead_100000_cache_10G_depth+[0:9]_sender.txt"
+
+// code to log various useful info of sender node in sync (mskim)
+func logCacheInfo(hash common.Hash, NodeRequestNum int, time time.Duration, length int){
+	if(common.CleanCacheHitFromSync == true){
+		common.CleanCacheHitFromSyncCount++
+	}
+
+	if(common.DirtyCacheHitFromSync == true){
+		common.DirtyCacheHitFromSyncCount++
+	}
+
+	if(common.LevelDBCacheMissFromSync == true) {
+		common.LevelDBCacheMissFromSyncCount++
+	}
+
+	f, err := os.OpenFile(SenderFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("ERR:", err)
+	}
+
+	HashData := "Hash: "+ hash.Hex()
+	NodeRequestNumData := "Node Num: " + strconv.Itoa(NodeRequestNum)
+	TimeData := "Took time: "+ strconv.Itoa(int(time.Nanoseconds()))
+	CleanCacheHitData := "CleanCacheHitData: " + strconv.FormatBool(common.CleanCacheHitFromSync)
+	AccumulateCleanCacheHitData := "CleanCacheHit Total Count:" + strconv.Itoa(common.CleanCacheHitFromSyncCount)
+	DirtyCacheHitData := "DirtyCacheHitData: " + strconv.FormatBool(common.DirtyCacheHitFromSync)
+	AccumulateDirtyCacheHitData := "DirtyCacheHit Total Count:" + strconv.Itoa(common.DirtyCacheHitFromSyncCount)
+	LevelDBCacheMissData := "LevelDBCacheMiss: "+ strconv.FormatBool(common.LevelDBCacheMissFromSync)
+	AccumulateLevelDBCacheMissData := "LevelDBCacheMiss Total Count: "+ strconv.Itoa(common.LevelDBCacheMissFromSyncCount)
+	NodeSizeData := "Node Size: " + strconv.Itoa(length)
+	fmt.Fprintln(f, HashData, NodeRequestNumData, TimeData,CleanCacheHitData,DirtyCacheHitData,  LevelDBCacheMissData,AccumulateCleanCacheHitData,AccumulateDirtyCacheHitData, AccumulateLevelDBCacheMissData, NodeSizeData)
+	f.Close()
+}
 
 // rlp returns the raw rlp encoded blob of the cached node, either directly from
 // the cache, or by regenerating it from the collapsed node.
@@ -532,6 +569,7 @@ func GetProperDBIndex(hash common.Hash) int {
 // node retrieves a cached trie node from memory, or returns nil if none can be
 // found in the memory cache.
 func (db *Database) node(hash common.Hash) node {
+	// fmt.Println("********** node() **********")
 	// Retrieve the node from the clean cache if available
 	if db.cleans != nil {
 		if enc, err := db.cleans.Get(string(hash[:])); err == nil && enc != nil {
@@ -591,45 +629,75 @@ func (db *Database) node(hash common.Hash) node {
 // cached, the method queries the persistent database for the content.
 // (sender uses this function to find trie nodes for receiver while syncing) (jmlee)
 func (db *Database) Node(hash common.Hash) ([]byte, error) {
+	fmt.Println("********** Node() **********")
 	// It doens't make sense to retrieve the metaroot
 	if hash == (common.Hash{}) {
 		return nil, errors.New("not found")
 	}
 	// Retrieve the node from the clean cache if available
 	if db.cleans != nil {
+		start0 := time.Now()
 		if enc, err := db.cleans.Get(string(hash[:])); err == nil && enc != nil {
+			elapsed0 := time.Since(start0)
 			memcacheCleanHitMeter.Mark(1)
 			memcacheCleanReadMeter.Mark(int64(len(enc)))
 			common.TrieNodeFrom = "c"
+			common.CleanCacheHitFromSync = true // 여기 카운트하면, clean cache 히트이고3 => 쁠쁠로 웬만하지 말고, mutex를 도입한 맵을 동원해서 0,1,2,3으로 카운트 
+			common.RequestedNodeNumberFromSync++
+			logCacheInfo(hash, common.RequestedNodeNumberFromSync, elapsed0, len(enc))
+			common.CleanCacheHitFromSync = false
 			// fmt.Println("get trie node from: clean cache")
 			return enc, nil
 		}
 	}
 	// Retrieve the node from the dirty cache if available
 	db.lock.RLock()
+	start1 := time.Now()
 	dirty := db.dirties[hash]
+	elapsed1 := time.Since(start1)
 	db.lock.RUnlock()
 
 	if dirty != nil {
 		common.TrieNodeFrom = "d"
+		common.DirtyCacheHitFromSync = true // 여기 카운트하면, dirty cache 히트이고 => 쁠쁠로 웬만하지 말고, mutex를 도입한 맵을 동원해서 0,1,2,3으로 카운트 
+		common.RequestedNodeNumberFromSync++
+		logCacheInfo(hash, common.RequestedNodeNumberFromSync, elapsed1, len(dirty.rlp()))
+		common.DirtyCacheHitFromSync = false
 		// fmt.Println("get trie node from: dirty cache")
 		return dirty.rlp(), nil
 	}
 	// Content unavailable in memory, attempt to retrieve from disk
 	// enc, err := db.diskdb.Get(hash[:]) // impt: find indexed trie node in proper trie node db (jmlee) (cf. this Node() function is rarely called)
 	dbIndex := GetProperDBIndex(hash)
-	start1 := time.Now()
+	// start1 := time.Now()
 	// dont need additional trie db anymore, just set elapsed1 = 0 (jmlee)
 	// enc, err := GlobalTrieNodeDB[dbIndex].Get(hash[:])
-	elapsed1 := time.Since(start1)
-	elapsed1 = 0
+	// elapsed1 := time.Since(start1)
+	// elapsed1 = 0
 	// if enc == nil {
 	// 	// not found, just logging it as 0
 	// 	elapsed1 = 0
 	// }
+
+	// for i := 0; i < 10; i++ {
+	// 	fmt.Println("↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓")
+	// 	start2 := time.Now()
+	// 	_, _ = db.diskdb.Get(hash[:])
+	// 	elapsed2 := time.Since(start2)
+	// 	fmt.Println("Total elpase Time for Get in trie database: ", elapsed2)
+	// 	fmt.Println("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+	// 	// fmt.Println("disdb.Get() looking for key", hash)
+	// 	// fmt.Println("diskdb.Get() elapsed time for trial ", i, ": ",elapsed2 )
+	// 	// logGetTime(hash, i, elapsed2)
+	// }
+	// 이부분은 시스템이 평상시에도 부르지는 않고, 싱크시에만 부른 것으로 보임 LevelDB가 계속 불리는 것과 비교됨 (mskim)
+
+	common.RequestedNodeNumberFromSync++
 	start2 := time.Now()
 	enc, err := db.diskdb.Get(hash[:])
 	elapsed2 := time.Since(start2)
+	logCacheInfo(hash, common.RequestedNodeNumberFromSync, elapsed2, len(enc))
+	common.LevelDBCacheMissFromSync = false
 	// fmt.Println("	%%% compare DB search time -> triedb:", elapsed1, "vs totaldb:", elapsed2, "-> reduced time:", elapsed2-elapsed1)
 
 	// print trie db index & search time for impt data log

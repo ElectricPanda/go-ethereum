@@ -224,6 +224,7 @@ func NewLevelDBDatabaseWithFreezer(file string, cache int, handles int, freezer 
 	GlobalDB = frdb // set globaldb (jmlee)
 	common.GlobalDB = frdb // set globaldb (jmlee)
 	fmt.Println("GlobalDB is set")
+	fmt.Println("leveldb cache size:", cache) // (mskim)
 
 	// open additional leveldb for indexed trie nodes (jmlee)
 	for i := 0; i < len(trie.GlobalTrieNodeDB); i++ {
