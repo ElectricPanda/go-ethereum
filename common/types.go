@@ -25,6 +25,8 @@ import (
 	"math/rand"
 	"reflect"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -78,13 +80,25 @@ var (
 	LevelDBCacheMissFromSync = false
 	RequestedNodeNumberFromSync = 0 
 
+	RequestedBatchNumber = 0
+	RequestStartTime time.Time = time.Time{}
+
+	ReceivedBatchNumber = 0
+	ReceiveStartTime time.Time = time.Time{}
+
 	DescendingOrderNodeHash []string
 	DescendingOrderNodeHashPopIndex = 1
 
 	TotalCommit = 0
 
+	// take care of synchronization 
+	// hashLevelDBLPairs = make(map[string]int)
+	hashLevelSSTablePairs = make(map[string]LevelSSTable)
+	mux          = &sync.RWMutex{}
+
+	
+
 	// temp var to know where did geth get the trie node from (-1: leveldb memory, 0~: corresponding leveldb levels)
-	// LevelDBNodeFrom = -2
 	// temp var to see LevelDb memory Hit count of sender node during from sync process
 	// LevelDBCacheHitFromSync = 0
 	// temp var to see LevelDb memory Miss count of sender node during from sync process
@@ -105,6 +119,41 @@ var (
 	// block headers for impt mining (convert headers to uint32 slice) (jmlee)
 	RLPedBlockHeadersUint32s []uint32
 )
+
+type LevelSSTable struct {
+    Level int
+    SSTableNum int64
+	CacheMiss bool
+}
+
+// WriteToMap modifies hashLevelSSTablePairs to associate the given key with the given level and SSTable number.
+func WriteToMap(key string, level int, sstableNum int64) {
+    mux.Lock()
+    defer mux.Unlock()
+    hashLevelSSTablePairs[key] = LevelSSTable{
+        Level: level,
+        SSTableNum: sstableNum,
+		CacheMiss: false,
+    }
+}
+
+func UpdateCacheMiss(key string, cacheMiss bool) {
+    mux.Lock()
+    defer mux.Unlock()
+    value, exists := hashLevelSSTablePairs[key]
+    if exists {
+        value.CacheMiss = cacheMiss
+        hashLevelSSTablePairs[key] = value
+    }
+}
+
+// ReadFromMap returns the LevelSSTable associated with the given key in hashLevelSSTablePairs.
+func ReadFromMap(key string) LevelSSTable {
+    mux.RLock()
+    defer mux.RUnlock()
+    value, _ := hashLevelSSTablePairs[key]
+    return value
+}
 
 // Hash represents the 32 byte Keccak256 hash of arbitrary data.
 type Hash [HashLength]byte
