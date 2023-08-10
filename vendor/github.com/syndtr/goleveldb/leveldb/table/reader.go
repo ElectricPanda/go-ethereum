@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	// "encoding/hex"
+	"encoding/hex"
 	// "time"
 
 	"github.com/golang/snappy"
@@ -618,7 +618,7 @@ func (r *Reader) readBlock(bh blockHandle, verifyChecksum bool) (*block, error) 
 	return b, nil
 }
 
-func (r *Reader) readBlockCached(bh blockHandle, verifyChecksum, fillCache bool) (*block, util.Releaser, error) {
+func (r *Reader) readBlockCached(bh blockHandle, verifyChecksum, fillCache bool, s string) (*block, util.Releaser, error) {
 	// fmt.Println("LevelDB Reader 내부 *** bh", bh)
 	// fmt.Println("LevelDB Reader 내부 *** verifyChecksum", verifyChecksum)
 	// fmt.Println("LevelDB Reader 내부 *** fillCache", fillCache)
@@ -647,10 +647,14 @@ func (r *Reader) readBlockCached(bh blockHandle, verifyChecksum, fillCache bool)
 		if fillCache {
 			// fmt.Println("LevelDB Reader 내부 *** fillCache ")
 			ch = r.cache.Get(bh.offset, func() (size int, value cache.Value) {
+				// 여기로 들어오면 Cache Miss임(히트였으면 cache.Get() 결과가 곧장 ch로 저장, 미스니까 밑에 readBlock()에서 disk에서 블록정보를 찾기 시작)
 				// Get()함수 자체는 항상 불리고 처리가 되나, Get()함수의 파라미터로 들어오고 있는 이 함수는 캐쉬가 안 일어나는 상황에서는 불리고, 캐쉬 히트가 난 상황에서는 불리지 않음) (mskim)
-				// if(r.filterBH.length !=0 ) {fmt.Println("********* LevelDB Cache Miss!!! **************")} // (mskim)
+				// if(r.filterBH.length !=0 ) {fmt.Println("********* DISK 내부 프린트: LevelDB Cache Miss!!! **************")} // (mskim)
 				// if(r.filterBH.length !=0 ) {common.LevelDBCacheMissFromSyncCount++} // mskim (여기서 카운트하면 getDataIter 나 getIndexBlock에서 부르는 두 경우가 모두 카운트되니까 밖으로 가지고 나가는게 적절할듯)
-				if(r.filterBH.length !=0) {common.LevelDBCacheMissFromSync = true}
+				if(r.filterBH.length !=0) {
+					// common.LevelDBCacheMissFromSync = true
+					common.UpdateCacheMiss(s, true)
+				}
 				// if(r.filterBH.length !=0 ) {fmt.Println("common.LevelDBCacheMissFromSync", common.LevelDBCacheMissFromSync)}
 				
 				var b *block
@@ -742,7 +746,7 @@ func (r *Reader) readFilterBlockCached(bh blockHandle, fillCache bool) (*filterB
 
 func (r *Reader) getIndexBlock(fillCache bool) (b *block, rel util.Releaser, err error) {
 	if r.indexBlock == nil {
-		return r.readBlockCached(r.indexBH, true, fillCache)
+		return r.readBlockCached(r.indexBH, true, fillCache, "random")
 	}
 	return r.indexBlock, util.NoopReleaser{}, nil
 }
@@ -794,8 +798,8 @@ func (r *Reader) newBlockIter(b *block, bReleaser util.Releaser, slice *util.Ran
 	return bi
 }
 
-func (r *Reader) getDataIter(dataBH blockHandle, slice *util.Range, verifyChecksum, fillCache bool) iterator.Iterator {
-	b, rel, err := r.readBlockCached(dataBH, verifyChecksum, fillCache)
+func (r *Reader) getDataIter(dataBH blockHandle, slice *util.Range, verifyChecksum, fillCache bool, s string) iterator.Iterator {
+	b, rel, err := r.readBlockCached(dataBH, verifyChecksum, fillCache, s)
 	if err != nil {
 		return iterator.NewEmptyIterator(err)
 	}
@@ -810,7 +814,7 @@ func (r *Reader) getDataIterErr(dataBH blockHandle, slice *util.Range, verifyChe
 		return iterator.NewEmptyIterator(r.err)
 	}
 
-	return r.getDataIter(dataBH, slice, verifyChecksum, fillCache)
+	return r.getDataIter(dataBH, slice, verifyChecksum, fillCache, "random")
 }
 
 // NewIterator creates an iterator from the table.
@@ -902,7 +906,15 @@ func (r *Reader) find(key []byte, filtered bool, ro *opt.ReadOptions, noValue bo
 	}
 
 	// start5 := time.Now()
-	data := r.getDataIter(dataBH, nil, r.verifyChecksum, !ro.GetDontFillCache())
+	hexKey := hex.EncodeToString(key)
+	hexKey = "0x" + hexKey
+	if(len(hexKey)>82 || len(hexKey)<66) {
+		hexKey = "random"
+	} else{
+		hexKey = hexKey[:66]
+	}
+
+	data := r.getDataIter(dataBH, nil, r.verifyChecksum, !ro.GetDontFillCache(), hexKey)
 	// start6 := time.Since(start5);
 	// fmt.Println("Reader.getDataIter Time: ", start6)
 	// if(len(hexKey)== 80){fmt.Println("leveldb/table/reader.go data: ", data)}
@@ -926,7 +938,7 @@ func (r *Reader) find(key []byte, filtered bool, ro *opt.ReadOptions, noValue bo
 			return nil, nil, r.err
 		}
 
-		data = r.getDataIter(dataBH, nil, r.verifyChecksum, !ro.GetDontFillCache())
+		data = r.getDataIter(dataBH, nil, r.verifyChecksum, !ro.GetDontFillCache(), hexKey)
 		if !data.Next() {
 			data.Release()
 			if err = data.Error(); err == nil {
@@ -1014,7 +1026,7 @@ func (r *Reader) OffsetOf(key []byte) (offset int64, err error) {
 		return
 	}
 
-	indexBlock, rel, err := r.readBlockCached(r.indexBH, true, true)
+	indexBlock, rel, err := r.readBlockCached(r.indexBH, true, true, "random")
 	if err != nil {
 		return
 	}
