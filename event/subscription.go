@@ -20,6 +20,7 @@ import (
 	"context"
 	"sync"
 	"time"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
 )
@@ -71,6 +72,7 @@ type funcSub struct {
 }
 
 func (s *funcSub) Unsubscribe() {
+	fmt.Println("Unsubscribe() 1")
 	s.mu.Lock()
 	if s.unsubscribed {
 		s.mu.Unlock()
@@ -119,6 +121,7 @@ type resubscribeSub struct {
 }
 
 func (s *resubscribeSub) Unsubscribe() {
+	fmt.Println("Unsubscribe() 2")
 	s.unsubOnce.Do(func() {
 		s.unsub <- struct{}{}
 		<-s.err
@@ -264,6 +267,7 @@ func (sc *SubscriptionScope) Count() int {
 }
 
 func (s *scopeSub) Unsubscribe() {
+	// fmt.Println("Unsubscribe() 3")
 	s.s.Unsubscribe()
 	s.sc.mu.Lock()
 	defer s.sc.mu.Unlock()

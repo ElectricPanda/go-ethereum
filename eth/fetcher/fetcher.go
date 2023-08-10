@@ -515,7 +515,7 @@ func (f *Fetcher) loop() {
 			}
 
 		case filter := <-f.bodyFilter:
-			fmt.Println("Fetcher의 loop() 함수의 케이스 중 filter := <-f.bodyFilter:")
+			// fmt.Println("Fetcher의 loop() 함수의 케이스 중 filter := <-f.bodyFilter:")
 			// Block bodies arrived, extract any explicitly requested blocks, return the rest
 			var task *bodyFilterTask
 			select {

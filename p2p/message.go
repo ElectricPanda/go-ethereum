@@ -90,8 +90,9 @@ type MsgReadWriter interface {
 // Send writes an RLP-encoded message with the given code.
 // data should encode as an RLP list.
 func Send(w MsgWriter, msgcode uint64, data interface{}) error {
-	fmt.Println("Send() and the data is: ")
+	// fmt.Println("Send() and the data is: ")
 	size, r, err := rlp.EncodeToReader(data)
+	// fmt.Println("@@@@@@@@ encoded data: ", "msg.size: ", size, "msg.Payload: ", r)
 	if err != nil {
 		return err
 	}
@@ -196,7 +197,7 @@ func (p *MsgPipeRW) WriteMsg(msg Msg) error {
 
 // ReadMsg returns a message sent on the other end of the pipe.
 func (p *MsgPipeRW) ReadMsg() (Msg, error) {
-	fmt.Println("ReadMsg() 0")
+	// fmt.Println("ReadMsg() 0")
 	if atomic.LoadInt32(p.closed) == 0 {
 		select {
 		case msg := <-p.r:

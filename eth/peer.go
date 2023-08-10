@@ -301,7 +301,7 @@ func (p *peer) SendBlockBodiesRLP(bodies []rlp.RawValue) error {
 // SendNodeDataRLP sends a batch of arbitrary internal data, corresponding to the
 // hashes requested.
 func (p *peer) SendNodeData(data [][]byte) error {
-	fmt.Println("SendNodeData()")
+	// fmt.Println("SendNodeData(), current time: ", time.Now())
 	return p2p.Send(p.rw, NodeDataMsg, data)
 }
 
@@ -342,7 +342,8 @@ func (p *peer) RequestBodies(hashes []common.Hash) error {
 // RequestNodeData fetches a batch of arbitrary data from a node's known state
 // data, corresponding to the specified hashes.
 func (p *peer) RequestNodeData(hashes []common.Hash) error {
-	fmt.Println("RequestNodeData()")
+	// fmt.Println("RequestNodeData(), current time: ", time.Now())
+	fmt.Printf("END(RECEIVER) //////////////////////////////////////////////////////////////////////////// Time took %s\n", time.Since(common.ReceiveStartTime))
 	p.Log().Debug("Fetching batch of state data", "count", len(hashes))
 	return p2p.Send(p.rw, GetNodeDataMsg, hashes)
 }

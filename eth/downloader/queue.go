@@ -37,6 +37,7 @@ var (
 	blockCacheItems      = 8192             // Maximum number of blocks to cache before throttling the download
 	blockCacheMemory     = 64 * 1024 * 1024 // Maximum amount of memory to use for block caching
 	blockCacheSizeWeight = 0.1              // Multiplier to approximate the average block size based on past ones
+	tempcount = 0
 )
 
 var (
@@ -118,6 +119,23 @@ func newQueue() *queue {
 		active:           sync.NewCond(lock),
 		lock:             lock,
 	}
+}
+
+
+
+func (f *fetchResult) PrintFetchResultInfo(){
+	if(f == nil ) {
+		fmt.Println("fetchResult is nil") 
+		return
+	}
+	fmt.Println("f: ",f)
+	fmt.Println("Pending: ", f.Pending)
+	fmt.Println("Hash: ", f.Hash.Hex())
+	fmt.Println("Header: ", f.Header)
+	fmt.Println("Uncle: ", f.Uncles)
+	fmt.Println("Transactions: ", f.Transactions, "Tx Length: ", f.Transactions.Len())
+	fmt.Println("Receipts: ", f.Receipts, "Receipts Length: ", f.Receipts.Len())
+	fmt.Println("TrieNonces: ", f.TrieNonces, "TrieNonces Length: ", len(f.TrieNonces))
 }
 
 // Reset clears out the queue contents.
@@ -619,7 +637,7 @@ func (q *queue) Revoke(peerID string) {
 // ExpireHeaders checks for in flight requests that exceeded a timeout allowance,
 // canceling them and returning the responsible peers for penalisation.
 func (q *queue) ExpireHeaders(timeout time.Duration) map[string]int {
-	fmt.Println("ExpireHeaders()")
+	// fmt.Println("ExpireHeaders()")
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -629,7 +647,7 @@ func (q *queue) ExpireHeaders(timeout time.Duration) map[string]int {
 // ExpireBodies checks for in flight block body requests that exceeded a timeout
 // allowance, canceling them and returning the responsible peers for penalisation.
 func (q *queue) ExpireBodies(timeout time.Duration) map[string]int {
-	fmt.Println("ExpireBodies()")
+	// fmt.Println("ExpireBodies()")
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -639,7 +657,7 @@ func (q *queue) ExpireBodies(timeout time.Duration) map[string]int {
 // ExpireReceipts checks for in flight receipt requests that exceeded a timeout
 // allowance, canceling them and returning the responsible peers for penalisation.
 func (q *queue) ExpireReceipts(timeout time.Duration) map[string]int {
-	fmt.Println("ExpireReceipts()")
+	// fmt.Println("ExpireReceipts()")
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -656,7 +674,12 @@ func (q *queue) expire(timeout time.Duration, pendPool map[string]*fetchRequest,
 	// Iterate over the expired requests and return each to the queue
 	expiries := make(map[string]int)
 	for id, request := range pendPool {
-		if time.Since(request.Time) > timeout {
+		// tempcount++
+		// if(tempcount == 2000){
+		// 	os.Exit(1)
+		// }
+		// fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& time.Since(request.Time) &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&: ", time.Since(request.Time))
+		if time.Since(request.Time) > timeout * 100 {
 			// Update the metrics with the timeout
 			timeoutMeter.Mark(1)
 

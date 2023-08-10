@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -392,16 +393,19 @@ type protoRW struct {
 	werr   chan<- error    // for write results
 	offset uint64
 	w      MsgWriter
+	messageSendTime time.Time
 }
 
 func (rw *protoRW) WriteMsg(msg Msg) (err error) {
-	fmt.Println("WriteMsg() 3")
+	// rw.messageSendTime = time.Now()
+	// fmt.Println("WriteMsg() 3, current time: ", rw.messageSendTime, "msg: ", msg, "msg.Code: ", msg.Code, "msg.Size: ", msg.Size, "msg.Payload: ", msg.Payload, "msg.receivedAt: ", msg.ReceivedAt)
 	if msg.Code >= rw.Length {
 		return newPeerError(errInvalidMsgCode, "not handled")
 	}
 	msg.Code += rw.offset
 	select {
 	case <-rw.wstart:
+		// fmt.Println("@@@@@@@@@@@@ case <-rw.wstart: ")
 		err = rw.w.WriteMsg(msg)
 		// Report write status back to Peer.run. It will initiate
 		// shutdown if the error is non-nil and unblock the next write
@@ -409,17 +413,21 @@ func (rw *protoRW) WriteMsg(msg Msg) (err error) {
 		// as well but we don't want to rely on that.
 		rw.werr <- err
 	case <-rw.closed:
+		// fmt.Println("@@@@@@@@@@@@ case <-rw.closed: ")
 		err = ErrShuttingDown
 	}
+	fmt.Printf("END(Sender) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Time took %s\n", time.Since(common.RequestStartTime))
+	// fmt.Println("END <<<<<<<<<<<<<<<<<<<<<<<<<< err: <<<<<<<<<<<<<<<<<<<<<<<<<<<<< END", err)
 	return err
 }
 
 func (rw *protoRW) ReadMsg() (Msg, error) {
-	fmt.Println("ReadMsg() 3")
+	// fmt.Println("ReadMsg() 3")
 	select {
 	case msg := <-rw.in:
-		fmt.Println("msg := <-rw.in")
-		fmt.Println("msg: ", msg)
+		// responseTime := time.Since(rw.messageSendTime)
+		// fmt.Println("msg := <-rw.in, current Time: ", time.Now(), "elapsed Time: ", responseTime)
+		// fmt.Println("ReadMsg: ", msg)
 		msg.Code -= rw.offset
 		return msg, nil
 	case <-rw.closed:

@@ -207,13 +207,15 @@ func (p *peerConnection) FetchReceipts(request *fetchRequest) error {
 
 // FetchNodeData sends a node state data retrieval request to the remote peer.
 func (p *peerConnection) FetchNodeData(hashes []common.Hash) error {
-	fmt.Println("FetchNodeData()")
+	// fmt.Println("FetchNodeData(), current time: ", time.Now())
 	// Sanity check the protocol version
 	if p.version < 63 {
 		panic(fmt.Sprintf("node data fetch [eth/63+] requested on eth/%d", p.version))
 	}
 	// Short circuit if the peer is already fetching
 	if !atomic.CompareAndSwapInt32(&p.stateIdle, 0, 1) {
+		fmt.Println("CompareAndSwapInt32()")
+		fmt.Println("CompareAndSwapInt32() after: p.stateIdle, ",atomic.LoadInt32(&p.stateIdle))
 		return errAlreadyFetching
 	}
 	p.stateStarted = time.Now()
@@ -248,12 +250,15 @@ func (p *peerConnection) SetReceiptsIdle(delivered int) {
 // data retrieval requests. Its estimated state retrieval throughput is updated
 // with that measured just now.
 func (p *peerConnection) SetNodeDataIdle(delivered int) {
+	// fmt.Println("SetNodeDataIdle() before setIdle, p.stateIdle", atomic.LoadInt32(&p.stateIdle))
 	p.setIdle(p.stateStarted, delivered, &p.stateThroughput, &p.stateIdle)
+	// fmt.Println("SetNodeDataIdle() after setIdle, p.stateIdle", atomic.LoadInt32(&p.stateIdle))
 }
 
 // setIdle sets the peer to idle, allowing it to execute new retrieval requests.
 // Its estimated retrieval throughput is updated with that measured just now.
 func (p *peerConnection) setIdle(started time.Time, delivered int, throughput *float64, idle *int32) {
+	// fmt.Println("setIdle()")
 	// Irrelevant of the scaling, make sure the peer ends up idle
 	defer atomic.StoreInt32(idle, 0)
 
@@ -505,6 +510,7 @@ func (ps *peerSet) ReceiptIdlePeers() ([]*peerConnection, int) {
 // NodeDataIdlePeers retrieves a flat list of all the currently node-data-idle
 // peers within the active peer set, ordered by their reputation.
 func (ps *peerSet) NodeDataIdlePeers() ([]*peerConnection, int) {
+	// fmt.Println("NodeDataIdlePeers()")
 	idle := func(p *peerConnection) bool {
 		return atomic.LoadInt32(&p.stateIdle) == 0
 	}
@@ -520,12 +526,15 @@ func (ps *peerSet) NodeDataIdlePeers() ([]*peerConnection, int) {
 // protocol version constraints, using the provided function to check idleness.
 // The resulting set of peers are sorted by their measure throughput.
 func (ps *peerSet) idlePeers(minProtocol, maxProtocol int, idleCheck func(*peerConnection) bool, throughput func(*peerConnection) float64) ([]*peerConnection, int) {
+	// fmt.Println("idlePeers()")
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
 	idle, total := make([]*peerConnection, 0, len(ps.peers)), 0
 	for _, p := range ps.peers {
 		if p.version >= minProtocol && p.version <= maxProtocol {
+			// fmt.Println("inside idlePeers() printing peer: ", p)
+			// fmt.Println("idleCheck(p): ", idleCheck(p))
 			if idleCheck(p) {
 				idle = append(idle, p)
 			}

@@ -156,7 +156,7 @@ func (pm *ProtocolManager) syncer() {
 			go pm.synchronise(pm.peers.BestPeer())
 
 		case <-forceSync.C:
-			fmt.Println("<-forceSync.C:")
+			// fmt.Println("<-forceSync.C:")
 			// Force a sync even if not enough peers are present
 			go pm.synchronise(pm.peers.BestPeer())
 
@@ -168,7 +168,7 @@ func (pm *ProtocolManager) syncer() {
 
 // synchronise tries to sync up our local block chain with a remote peer.
 func (pm *ProtocolManager) synchronise(peer *peer) {
-	fmt.Println("synchronise() ~!")
+	// fmt.Println("synchronise() ~!")
 	// Short circuit if no peers are available
 	if peer == nil {
 		return

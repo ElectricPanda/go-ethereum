@@ -24,7 +24,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"os"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,8 +45,7 @@ var (
 	MaxSkeletonSize = 128 // Number of header fetches to need for a skeleton assembly
 	MaxBodyFetch    = 128 // Amount of block bodies to be fetched per retrieval request
 	MaxReceiptFetch = 256 // Amount of transaction receipts to allow fetching per request
-	// MaxStateFetch   = 384 // Amount of node state values to allow fetching per request
-	MaxStateFetch   = 16 // Amount of node state values to allow fetching per request
+	MaxStateFetch   = 384 // Amount of node state values to allow fetching per request
 
 	rttMinEstimate   = 2 * time.Second  // Minimum round-trip time to target for download requests
 	rttMaxEstimate   = 20 * time.Second // Maximum round-trip time to target for download requests
@@ -423,10 +421,13 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 	fmt.Println("syncWithPeer()")
 	d.mux.Post(StartEvent{})
 	defer func() {
+		fmt.Println("******************* syncWithPeer()의 defer 블록 내부 *******************")
 		// reset on error
 		if err != nil {
+			fmt.Println("******************* syncWithPeer()의 defer 블록 내부 2 *******************")
 			d.mux.Post(FailedEvent{err})
 		} else {
+			fmt.Println("******************* syncWithPeer()의 defer 블록 내부 3 *******************")
 			latest := d.lightchain.CurrentHeader()
 			d.mux.Post(DoneEvent{latest})
 		}
@@ -441,7 +442,6 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 	defer func(start time.Time) {
 		log.Debug("Synchronisation terminated", "elapsed", common.PrettyDuration(time.Since(start)))
 		fmt.Println("Synchronization terminated", "elapsed", common.PrettyDuration(time.Since(start)))
-		os.Exit(1)
 	}(time.Now())
 
 	// Look up the sync boundaries: the common ancestor and the target block
@@ -542,6 +542,7 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 // spawnSync runs d.process and all given fetcher functions to completion in
 // separate goroutines, returning the first error that appears.
 func (d *Downloader) spawnSync(fetchers []func() error) error {
+	fmt.Println("spawnSync()")
 	errc := make(chan error, len(fetchers))
 	d.cancelWg.Add(len(fetchers))
 	for _, fn := range fetchers {
@@ -562,8 +563,10 @@ func (d *Downloader) spawnSync(fetchers []func() error) error {
 		}
 	}
 	d.queue.Close()
+	fmt.Println("***************** spawnSync() 의 d.Cancel() ******************")
 	d.Cancel()
 	fmt.Println("어디서 드랍되서 에러가 난거야?! 5")
+	fmt.Println("에러 5 관련 err: ", err)
 	return err
 }
 
@@ -577,9 +580,10 @@ func (d *Downloader) cancel() {
 	if d.cancelCh != nil {
 		select {
 		case <-d.cancelCh:
+			fmt.Println("***************** cancel() <-d.cancelCh ********************")
 			// Channel was already closed
 		default:
-			fmt.Println("default로 들어왔음")
+			fmt.Println("************* cancel() default로 들어왔음 *****************")
 			close(d.cancelCh)
 		}
 	}
@@ -605,11 +609,13 @@ func (d *Downloader) Terminate() {
 	select {
 	case <-d.quitCh:
 	default:
+		fmt.Println("***************** Terminate() ******************")
 		close(d.quitCh)
 	}
 	d.quitLock.Unlock()
 
 	// Cancel any pending download requests
+	fmt.Println("***************** Terminate()의 d.Cancel() ******************")
 	d.Cancel()
 }
 
@@ -627,6 +633,7 @@ func (d *Downloader) fetchHeight(p *peerConnection) (*types.Header, error) {
 	for {
 		select {
 		case <-d.cancelCh:
+			fmt.Println("***************** fetchHeight() <-d.cancelCh ******************")
 			return nil, errCanceled
 
 		case packet := <-d.headerCh:
@@ -775,6 +782,7 @@ func (d *Downloader) findAncestor(p *peerConnection, remoteHeader *types.Header)
 	for finished := false; !finished; {
 		select {
 		case <-d.cancelCh:
+			fmt.Println("*********************** findAncestor() <-d.cancelCh 1 ********************")
 			return 0, errCanceled
 
 		case packet := <-d.headerCh:
@@ -861,6 +869,7 @@ func (d *Downloader) findAncestor(p *peerConnection, remoteHeader *types.Header)
 		for arrived := false; !arrived; {
 			select {
 			case <-d.cancelCh:
+				fmt.Println("*********************** findAncestor() <-d.cancelCh 2 ********************")
 				return 0, errCanceled
 
 			case packer := <-d.headerCh:
@@ -964,6 +973,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, pivot uint64) 
 	for {
 		select {
 		case <-d.cancelCh:
+			fmt.Println("*********************** fetchHeaders() <-d.cancelCh 1 ********************")
 			return errCanceled
 
 		case packet := <-d.headerCh:
@@ -991,6 +1001,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, pivot uint64) 
 						getHeaders(from)
 						continue
 					case <-d.cancelCh:
+						fmt.Println("*********************** fetchHeaders() <-d.cancelCh 2 ********************")
 						return errCanceled
 					}
 				}
@@ -1000,6 +1011,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, pivot uint64) 
 				case d.headerProcCh <- nil:
 					return nil
 				case <-d.cancelCh:
+					fmt.Println("*********************** fetchHeaders() <-d.cancelCh 3 ********************")
 					return errCanceled
 				}
 			}
@@ -1051,6 +1063,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, pivot uint64) 
 				select {
 				case d.headerProcCh <- headers:
 				case <-d.cancelCh:
+					fmt.Println("*********************** fetchHeaders() <-d.cancelCh 4 ********************")
 					return errCanceled
 				}
 				from += uint64(len(headers))
@@ -1063,6 +1076,7 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, pivot uint64) 
 					getHeaders(from)
 					continue
 				case <-d.cancelCh:
+					fmt.Println("*********************** fetchHeaders() <-d.cancelCh 5 ********************")
 					return errCanceled
 				}
 			}
@@ -1084,11 +1098,13 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, pivot uint64) 
 				select {
 				case ch <- false:
 				case <-d.cancelCh:
+					fmt.Println("*********************** fetchHeaders() <-d.cancelCh 6 ********************")
 				}
 			}
 			select {
 			case d.headerProcCh <- nil:
 			case <-d.cancelCh:
+				fmt.Println("*********************** fetchHeaders() <-d.cancelCh 7 ********************")
 			}
 			fmt.Println("**************** errBadPeer case 4 ****************")
 			return errBadPeer
@@ -1123,6 +1139,7 @@ func (d *Downloader) fillHeaderSkeleton(from uint64, skeleton []*types.Header) (
 		capacity = func(p *peerConnection) int { return p.HeaderCapacity(d.requestRTT()) }
 		setIdle  = func(p *peerConnection, accepted int) { p.SetHeadersIdle(accepted) }
 	)
+	fmt.Println("fetchParts(d.headerCh)")
 	err := d.fetchParts(d.headerCh, deliver, d.queue.headerContCh, expire,
 		d.queue.PendingHeaders, d.queue.InFlightHeaders, throttle, reserve,
 		nil, fetch, d.queue.CancelHeaders, capacity, d.peers.HeaderIdlePeers, setIdle, "headers")
@@ -1150,6 +1167,7 @@ func (d *Downloader) fetchBodies(from uint64) error {
 		capacity = func(p *peerConnection) int { return p.BlockCapacity(d.requestRTT()) }
 		setIdle  = func(p *peerConnection, accepted int) { p.SetBodiesIdle(accepted) }
 	)
+	fmt.Println("fetchParts(d.bodyCh)")
 	err := d.fetchParts(d.bodyCh, deliver, d.bodyWakeCh, expire,
 		d.queue.PendingBlocks, d.queue.InFlightBlocks, d.queue.ShouldThrottleBlocks, d.queue.ReserveBodies,
 		d.bodyFetchHook, fetch, d.queue.CancelBodies, capacity, d.peers.BodyIdlePeers, setIdle, "bodies")
@@ -1175,6 +1193,7 @@ func (d *Downloader) fetchReceipts(from uint64) error {
 		capacity = func(p *peerConnection) int { return p.ReceiptCapacity(d.requestRTT()) }
 		setIdle  = func(p *peerConnection, accepted int) { p.SetReceiptsIdle(accepted) }
 	)
+	fmt.Println("fetchParts(d.receiptCh)")
 	err := d.fetchParts(d.receiptCh, deliver, d.receiptWakeCh, expire,
 		d.queue.PendingReceipts, d.queue.InFlightReceipts, d.queue.ShouldThrottleReceipts, d.queue.ReserveReceipts,
 		d.receiptFetchHook, fetch, d.queue.CancelReceipts, capacity, d.peers.ReceiptIdlePeers, setIdle, "receipts")
@@ -1212,6 +1231,7 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 	expire func() map[string]int, pending func() int, inFlight func() bool, throttle func() bool, reserve func(*peerConnection, int) (*fetchRequest, bool, error),
 	fetchHook func([]*types.Header), fetch func(*peerConnection, *fetchRequest) error, cancel func(*fetchRequest), capacity func(*peerConnection) int,
 	idle func() ([]*peerConnection, int), setIdle func(*peerConnection, int), kind string) error {
+	fmt.Println("fetchParts()")
 
 	// Create a ticker to detect expired retrieval tasks
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -1224,13 +1244,16 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 	for {
 		select {
 		case <-d.cancelCh:
+			// fmt.Println("*********************** fetchParts() <-d.cancelCh 1 ********************")
 			return errCanceled
 
 		case packet := <-deliveryCh:
+			// fmt.Println("*********************** packet := <-deliveryCh *************************")
 			// If the peer was previously banned and failed to deliver its pack
 			// in a reasonable time frame, ignore its message.
 			if peer := d.peers.Peer(packet.PeerId()); peer != nil {
 				// Deliver the received chunk of data and check chain validity
+				// fmt.Println("*** deliver(packet) ***")
 				accepted, err := deliver(packet)
 				if err == errInvalidChain {
 					return err
@@ -1276,6 +1299,7 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 			}
 
 		case <-update:
+			// fmt.Println("** <-update **")
 			// Short circuit if we lost all our peers
 			if d.peers.Len() == 0 {
 				return errNoPeers
@@ -1283,6 +1307,7 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 			// Check for fetch request timeouts and demote the responsible peers
 			for pid, fails := range expire() {
 				if peer := d.peers.Peer(pid); peer != nil {
+					fmt.Println("** peer: **", peer)
 					// If a lot of retrieval elements expired, we might have overestimated the remote peer or perhaps
 					// ourselves. Only reset to minimal throughput but don't drop just yet. If even the minimal times
 					// out that sync wise we need to get rid of the peer.
@@ -1291,6 +1316,7 @@ func (d *Downloader) fetchParts(deliveryCh chan dataPack, deliver func(dataPack)
 					// and latency of a peer separately, which requires pushing the measures capacity a bit and seeing
 					// how response times reacts, to it always requests one more than the minimum (i.e. min 2).
 					if fails > 2 {
+						fmt.Println("fails > 2")
 						peer.log.Trace("Data delivery timed out", "type", kind)
 						setIdle(peer, 0)
 					} else {
@@ -1419,6 +1445,7 @@ func (d *Downloader) processHeaders(origin uint64, pivot uint64, td *big.Int) er
 	for {
 		select {
 		case <-d.cancelCh:
+			fmt.Println("*********************** processHeaders() <-d.cancelCh 1 ********************")
 			return errCanceled
 
 		case headers := <-d.headerProcCh:
@@ -1429,6 +1456,7 @@ func (d *Downloader) processHeaders(origin uint64, pivot uint64, td *big.Int) er
 					select {
 					case ch <- false:
 					case <-d.cancelCh:
+						fmt.Println("*********************** processHeaders() <-d.cancelCh 2 ********************")
 					}
 				}
 				// If no headers were retrieved at all, the peer violated its TD promise that it had a
@@ -1472,6 +1500,7 @@ func (d *Downloader) processHeaders(origin uint64, pivot uint64, td *big.Int) er
 				// Terminate if something failed in between processing chunks
 				select {
 				case <-d.cancelCh:
+					fmt.Println("*********************** processHeaders() <-d.cancelCh 3 ********************")
 					return errCanceled
 				default:
 				}
@@ -1525,6 +1554,7 @@ func (d *Downloader) processHeaders(origin uint64, pivot uint64, td *big.Int) er
 					for d.queue.PendingBlocks() >= maxQueuedHeaders || d.queue.PendingReceipts() >= maxQueuedHeaders {
 						select {
 						case <-d.cancelCh:
+							fmt.Println("*********************** processHeaders() <-d.cancelCh 4 ********************")
 							return errCanceled
 						case <-time.After(time.Second):
 						}
@@ -1621,8 +1651,10 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 	defer stateSync.Cancel()
 	go func() {
 		if err := stateSync.Wait(); err != nil && err != errCancelStateFetch && err != errCanceled {
+			fmt.Println("** processFastSycnContent 의 go func() 안의 if 문")
 			d.queue.Close() // wake up Results
 		}
+		fmt.Println("** processFastSyncContent 의 go func() 마무리")
 	}()
 	// Figure out the ideal pivot block. Note, that this goalpost may move if the
 	// sync takes long enough for the chain head to move significantly.
@@ -1643,17 +1675,20 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 		if len(results) == 0 {
 			// If pivot sync is done, stop
 			if oldPivot == nil {
-				fmt.Println("어디서 드랍되서 에러가 난거야?! 6")
+				fmt.Println("stateSync.Cancel() 어디서 드랍되서 에러가 난거야?! 6")
 				return stateSync.Cancel()
 			}
 			// If sync failed, stop
 			select {
 			case <-d.cancelCh:
+				fmt.Println("*********************** processFastSyncContent() <-d.cancelCh 1 ********************")
 				stateSync.Cancel()
 				fmt.Println("어디서 드랍되서 에러가 난거야?! 7")
 				return errCanceled
 			default:
+				fmt.Println("호오오오옥시 그러면 default 옵션으로 들어왔던 것인가?")
 			}
+			fmt.Println("processFastSyncContent의 for 룹 내의 첫 if문 len(results) == 0 의 끝")
 		}
 		if d.chainInsertHook != nil {
 			d.chainInsertHook(results)
@@ -1678,16 +1713,27 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 		if P != nil {
 			// If new pivot block found, cancel old state retrieval and restart
 			if oldPivot != P {
+
+				fmt.Println("################## @oldPivot@  ######################")
+				oldPivot.PrintFetchResultInfo()
+
+				fmt.Println("################## @P@ ######################")
+				P.PrintFetchResultInfo()
+
+				fmt.Println("################## stateSync.Cancel() #################")
 				stateSync.Cancel()
 
 				stateSync = d.syncState(P.Header.Root)
 				defer stateSync.Cancel()
 				go func() {
 					if err := stateSync.Wait(); err != nil && err != errCancelStateFetch && err != errCanceled {
+						fmt.Println("stateSync downloader 관련 관심있게 보고자 하는 if 문")
 						d.queue.Close() // wake up Results
 					}
+					fmt.Println("################## go func() 의 실행 끝단 ##################")
 				}()
 				oldPivot = P
+				fmt.Println("if oldPivot != P 문 마무리")
 			}
 			// Wait for completion, occasionally checking for pivot staleness
 			select {
@@ -1704,18 +1750,22 @@ func (d *Downloader) processFastSyncContent(latest *types.Header) error {
 
 			case <-time.After(time.Second):
 				oldTail = afterP
+				fmt.Println("어디서 드랍되서 에러가 난거야?! 12")
 				continue
 			}
+			fmt.Println("if P != nil 문 마무리")
 		}
 		// Fast sync done, pivot commit done, full import
 		if err := d.importBlockResults(afterP); err != nil {
 			fmt.Println("어디서 드랍되서 에러가 난거야?! 11")
 			return err
 		}
+		// fmt.Println("processFastSyncContent 의 for 룹 마지막 줄")
 	}
 }
 
 func splitAroundPivot(pivot uint64, results []*fetchResult) (p *fetchResult, before, after []*fetchResult) {
+	fmt.Println("splitAroundPivot()")
 	for _, result := range results {
 		num := result.Header.Number.Uint64()
 		switch {
@@ -1793,29 +1843,38 @@ func (d *Downloader) commitPivotBlock(result *fetchResult) error {
 // DeliverHeaders injects a new batch of block headers received from a remote
 // node into the download schedule.
 func (d *Downloader) DeliverHeaders(id string, headers []*types.Header) (err error) {
+	// fmt.Println("DeliverHeader()")
 	return d.deliver(id, d.headerCh, &headerPack{id, headers}, headerInMeter, headerDropMeter)
 }
 
 // DeliverBodies injects a new batch of block bodies received from a remote node.
 func (d *Downloader) DeliverBodies(id string, transactions [][]*types.Transaction, uncles [][]*types.Header, trieNonces [][]uint64) (err error) {
+	// fmt.Println("DeliverBodies()")
 	return d.deliver(id, d.bodyCh, &bodyPack{id, transactions, uncles, trieNonces}, bodyInMeter, bodyDropMeter)
 }
 
 // DeliverReceipts injects a new batch of receipts received from a remote node.
 func (d *Downloader) DeliverReceipts(id string, receipts [][]*types.Receipt) (err error) {
+	// fmt.Println("DeliverReceipts()")
 	return d.deliver(id, d.receiptCh, &receiptPack{id, receipts}, receiptInMeter, receiptDropMeter)
 }
 
 // DeliverNodeData injects a new batch of node state data received from a remote node.
 func (d *Downloader) DeliverNodeData(id string, data [][]byte) (err error) {
-	fmt.Println("DeliverNodeData()")
+	// fmt.Println("DeliverNodeData()")
 	return d.deliver(id, d.stateCh, &statePack{id, data}, stateInMeter, stateDropMeter)
 }
 
 // deliver injects a new batch of data received from a remote node.
 func (d *Downloader) deliver(id string, destCh chan dataPack, packet dataPack, inMeter, dropMeter metrics.Meter) (err error) {
 	// Update the delivery metrics for both good and failed deliveries
-	fmt.Println("deliver()")
+
+	common.ReceiveStartTime = time.Now()
+	common.ReceivedBatchNumber++
+	fmt.Printf("START(RECEIVER) \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ d.deliver() \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ Time at %s \n", common.ReceiveStartTime)
+	fmt.Printf("Batch Received #: %d\n", common.ReceivedBatchNumber)
+
+	// fmt.Println("deliver()")
 	inMeter.Mark(int64(packet.Items()))
 	defer func() {
 		if err != nil {
@@ -1825,17 +1884,18 @@ func (d *Downloader) deliver(id string, destCh chan dataPack, packet dataPack, i
 	// Deliver or abort if the sync is canceled while queuing
 	d.cancelLock.RLock()
 	cancel := d.cancelCh
+	// fmt.Println("*********************** deliver() <-d.cancelCh 1 ********************")
 	d.cancelLock.RUnlock()
 	if cancel == nil {
-		fmt.Println("여기로 들어온거야 지금?")
+		// fmt.Println("여기로 들어온거야 지금?")
 		return errNoSyncActive
 	}
 	select {
 	case destCh <- packet:
-		fmt.Println("destCh <- packet: ")
+		// fmt.Println("destCh <- packet: ")
 		return nil
 	case <-cancel:
-		fmt.Println("<-cancel: ")
+		// fmt.Println("<-cancel: ")
 		return errNoSyncActive
 	}
 }
@@ -1904,13 +1964,14 @@ func (d *Downloader) requestRTT() time.Duration {
 // requestTTL returns the current timeout allowance for a single download request
 // to finish under.
 func (d *Downloader) requestTTL() time.Duration {
-	var (
-		rtt  = time.Duration(atomic.LoadUint64(&d.rttEstimate))
-		conf = float64(atomic.LoadUint64(&d.rttConfidence)) / 1000000.0
-	)
-	ttl := time.Duration(ttlScaling) * time.Duration(float64(rtt)/conf)
-	if ttl > ttlLimit {
-		ttl = ttlLimit
-	}
-	return ttl
+	// var (
+	// 	rtt  = time.Duration(atomic.LoadUint64(&d.rttEstimate))
+	// 	conf = float64(atomic.LoadUint64(&d.rttConfidence)) / 1000000.0
+	// )
+	// ttl := time.Duration(ttlScaling) * time.Duration(float64(rtt)/conf)
+	// if ttl > ttlLimit {
+	// 	ttl = ttlLimit
+	// }
+	// return ttl
+	return ttlLimit
 }
