@@ -14,7 +14,7 @@ import (
 	"unsafe"
 	"os"
 
-	// "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -199,6 +199,9 @@ func (v *version) get(aux tFiles, ikey internalKey, ro *opt.ReadOptions, noValue
 	// Since entries never hop across level, finding key/value
 	// in smaller level make later levels irrelevant.
 	// aux = nil로 들어오니까 무시하자
+	// var foundTFile *tFile
+	// var foundLevel int
+
 	v.walkOverlapping(aux, ikey, func(level int, t *tFile) bool {
 		// 이게 walkOverlapping 함수에서 f 함수인데 뭐하는 함수냐면
 		// 해당 level에 있는 table 하나에서 찾고자 하는 값을 서치하는 코드임
@@ -222,6 +225,10 @@ func (v *version) get(aux tFiles, ikey internalKey, ro *opt.ReadOptions, noValue
 			// tops는 tOps 타입인데 table operations 를 뜻함
 			// tops.find() 함수 설명 보면 이렇게 나옴
 			// Finds key/value pair whose key is greater than or equal to the given key.
+			if t != nil {
+				hexKey := fmt.Sprintf("0x%x", ukey)
+				common.WriteToMap(hexKey, level, t.fd.Num)
+			}
 			fikey, fval, ferr = v.s.tops.find(t, ikey, ro)
 		}
 
@@ -273,6 +280,8 @@ func (v *version) get(aux tFiles, ikey internalKey, ro *opt.ReadOptions, noValue
 						value = fval
 						err = nil
 						// common.LevelDBNodeFrom = level
+						// foundTFile = t // Store the table where the key was found
+						// foundLevel = level // Store the level where the key was found
 					case keyTypeDel:
 					default:
 						panic("leveldb: invalid internalKey type")
@@ -313,6 +322,11 @@ func (v *version) get(aux tFiles, ikey internalKey, ro *opt.ReadOptions, noValue
 		// level0에서 원하던 값을 찾은게 아니라면 true를 return해 walkOverlapping 함수를 통해 계속 탐색시킴
 		return true
 	})
+
+	// if foundTFile != nil {
+	// 	hexKey := fmt.Sprintf("0x%x", ukey)
+	// 	common.WriteToMap(hexKey, foundLevel, foundTFile.fd.Num)
+	// }
 
 	if tseek && tset.table.consumeSeek() <= 0 {
 		tcomp = atomic.CompareAndSwapPointer(&v.cSeek, nil, unsafe.Pointer(tset))
