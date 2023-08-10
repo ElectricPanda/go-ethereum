@@ -276,6 +276,14 @@ func (c *Console) AutoCompleteInput(line string, pos int) (string, []string, str
 // Welcome show summary of current Geth instance and some metadata about the
 // console's available modules.
 func (c *Console) Welcome() {
+
+
+	// nodeHASH 파일 읽어서, 그 리스트 그 순서대로 디비 읽어서 리드 타임 측정
+	// hash := common.HexToHash("0x000798fb9dd12f35c0287a0ce9febc68601209fab7bdb349316c52d519432cb8")
+	// readNodeHash, _ := common.GlobalDB.Get(hash[:])
+	// fmt.Println("abbb", readNodeHash)
+
+
 	// code to generate descendingorderhash of all nodes (mskim)
 	// var filePath = "/home/minseokk1m/TH-PriorityQueueEnhance/logs/0212_TH_sort.txt" // file storing descendingorderhashes (mskim)
 
