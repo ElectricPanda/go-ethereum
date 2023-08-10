@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"os"
 	// "encoding/hex"
 
 	"github.com/allegro/bigcache"
@@ -245,27 +244,27 @@ func logCacheInfo(hash common.Hash, NodeRequestNum int, time time.Duration, leng
 		common.DirtyCacheHitFromSyncCount++
 	}
 
-	if(common.LevelDBCacheMissFromSync == true) {
+	if(common.ReadFromMap(hash.Hex()).CacheMiss == true){
 		common.LevelDBCacheMissFromSyncCount++
 	}
 
-	f, err := os.OpenFile(SenderFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println("ERR:", err)
-	}
+	// f, err := os.OpenFile(SenderFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// if err != nil {
+	// 	fmt.Println("ERR:", err)
+	// }
 
-	HashData := "Hash: "+ hash.Hex()
-	NodeRequestNumData := "Node Num: " + strconv.Itoa(NodeRequestNum)
-	TimeData := "Took time: "+ strconv.Itoa(int(time.Nanoseconds()))
-	CleanCacheHitData := "CleanCacheHitData: " + strconv.FormatBool(common.CleanCacheHitFromSync)
-	AccumulateCleanCacheHitData := "CleanCacheHit Total Count:" + strconv.Itoa(common.CleanCacheHitFromSyncCount)
-	DirtyCacheHitData := "DirtyCacheHitData: " + strconv.FormatBool(common.DirtyCacheHitFromSync)
-	AccumulateDirtyCacheHitData := "DirtyCacheHit Total Count:" + strconv.Itoa(common.DirtyCacheHitFromSyncCount)
-	LevelDBCacheMissData := "LevelDBCacheMiss: "+ strconv.FormatBool(common.LevelDBCacheMissFromSync)
-	AccumulateLevelDBCacheMissData := "LevelDBCacheMiss Total Count: "+ strconv.Itoa(common.LevelDBCacheMissFromSyncCount)
-	NodeSizeData := "Node Size: " + strconv.Itoa(length)
-	fmt.Fprintln(f, HashData, NodeRequestNumData, TimeData,CleanCacheHitData,DirtyCacheHitData,  LevelDBCacheMissData,AccumulateCleanCacheHitData,AccumulateDirtyCacheHitData, AccumulateLevelDBCacheMissData, NodeSizeData)
-	f.Close()
+	// HashData := "Hash: "+ hash.Hex()
+	// NodeRequestNumData := "Node Num: " + strconv.Itoa(NodeRequestNum)
+	// TimeData := "Took time: "+ strconv.Itoa(int(time.Nanoseconds()))
+	// CleanCacheHitData := "CleanCacheHitData: " + strconv.FormatBool(common.CleanCacheHitFromSync)
+	// AccumulateCleanCacheHitData := "CleanCacheHit Total Count:" + strconv.Itoa(common.CleanCacheHitFromSyncCount)
+	// DirtyCacheHitData := "DirtyCacheHitData: " + strconv.FormatBool(common.DirtyCacheHitFromSync)
+	// AccumulateDirtyCacheHitData := "DirtyCacheHit Total Count:" + strconv.Itoa(common.DirtyCacheHitFromSyncCount)
+	// LevelDBCacheMissData := "LevelDBCacheMiss: "+ strconv.FormatBool(common.LevelDBCacheMissFromSync)
+	// AccumulateLevelDBCacheMissData := "LevelDBCacheMiss Total Count: "+ strconv.Itoa(common.LevelDBCacheMissFromSyncCount)
+	// NodeSizeData := "Node Size: " + strconv.Itoa(length)
+	// fmt.Fprintln(f, HashData, NodeRequestNumData, TimeData,CleanCacheHitData,DirtyCacheHitData,  LevelDBCacheMissData,AccumulateCleanCacheHitData,AccumulateDirtyCacheHitData, AccumulateLevelDBCacheMissData, NodeSizeData)
+	// f.Close()
 }
 
 // rlp returns the raw rlp encoded blob of the cached node, either directly from
@@ -629,7 +628,8 @@ func (db *Database) node(hash common.Hash) node {
 // cached, the method queries the persistent database for the content.
 // (sender uses this function to find trie nodes for receiver while syncing) (jmlee)
 func (db *Database) Node(hash common.Hash) ([]byte, error) {
-	fmt.Println("********** Node() **********")
+	fmt.Printf("\tNODE READ from Leveldb #: %d ----------------------------- \n",common.RequestedNodeNumberFromSync)
+	// fmt.Println("********** Node() **********/ Hash: ", hash.Hex(), "/ Node Num: ",float64(common.RequestedNodeNumberFromSync))
 	// It doens't make sense to retrieve the metaroot
 	if hash == (common.Hash{}) {
 		return nil, errors.New("not found")
@@ -692,12 +692,24 @@ func (db *Database) Node(hash common.Hash) ([]byte, error) {
 	// }
 	// 이부분은 시스템이 평상시에도 부르지는 않고, 싱크시에만 부른 것으로 보임 LevelDB가 계속 불리는 것과 비교됨 (mskim)
 
+	// DB에 바로 접근하는 매우 소중한 코드
+	// readNodeHash, _ := common.GlobalDB.Get(hash[:])
+	// fmt.Println("abbb", readNodeHash)
+
 	common.RequestedNodeNumberFromSync++
+	// common.WriteToMap(hash.Hex(), -2, -2)
 	start2 := time.Now()
-	enc, err := db.diskdb.Get(hash[:])
+	enc, err := db.diskdb.Get(hash[:]) //TODO: enc, err := db.diskdb.Get(hash[:], LevelDBSSTableStruct) // 이런식으로 fresh한 구조체 만들어서 넣으면, read하는 동안 정보가 채워지겠지?
 	elapsed2 := time.Since(start2)
 	logCacheInfo(hash, common.RequestedNodeNumberFromSync, elapsed2, len(enc))
-	common.LevelDBCacheMissFromSync = false
+	fmt.Printf("\t\tdb.diskdb Gettime elapsed: %s\n", elapsed2)
+	fmt.Printf("\t\tHash: %s\n", hash.Hex())
+	fmt.Printf("\t\tLevelDB {Level / SSTABLE_Filenum}: %d, %d\n", common.ReadFromMap(hash.Hex()).Level, common.ReadFromMap(hash.Hex()).SSTableNum)//TODO: fmt.Printf("\t\tLevelDB {Level / SSTABLE_Filenum}: %d, %d\n", common.ReadFromMap(hash.Hex()).Level, common.ReadFromMap(hash.Hex()).SSTableNum) -> LS.Cachemiss로 바로 프린트하면, read시간에 lock contention이 포함되는 문제가 생기지 않지
+	fmt.Printf("\t\tLevelDB CacheMiss: %t\n", common.ReadFromMap(hash.Hex()).CacheMiss)
+	fmt.Printf("\t\tLevelDB Total CacheMiss Count: %d\n", common.LevelDBCacheMissFromSyncCount)
+	fmt.Printf("\t\tLevelDB Total Read Count: %d\n", common.RequestedNodeNumberFromSync)
+	fmt.Printf("\t\tLevelDB CacheMiss Rate: %.2f%%\n",(float64(common.LevelDBCacheMissFromSyncCount)/float64(common.RequestedNodeNumberFromSync))*100 )
+	// common.LevelDBCacheMissFromSync = false
 	// fmt.Println("	%%% compare DB search time -> triedb:", elapsed1, "vs totaldb:", elapsed2, "-> reduced time:", elapsed2-elapsed1)
 
 	// print trie db index & search time for impt data log
