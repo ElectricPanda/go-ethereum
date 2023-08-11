@@ -245,8 +245,9 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
 
     # collect total results
-    block_mining_times_copy = copy.deepcopy(block_mining_times) # copy these lists since they should be returned without modification
-    broadcast_costs_copy = copy.deepcopy(broadcast_costs)
+    block_mining_times_copy = copy.deepcopy(block_mining_times) # copy this list since it should be returned without modification
+    broadcast_costs_copy = copy.deepcopy(broadcast_costs) # copy this list since it should be returned without modification
+    participants_mining_powers_copy = copy.deepcopy(participants_mining_powers) # copy this list since it should be reused in other functions
     results = {}
     results['block_num_to_mine'] = [block_num_to_mine]
     results['total_difficulty_prob'] = [total_difficulty_prob]
@@ -254,7 +255,7 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     results['node_mining_prob'] = [node_mining_prob]
     results['max_group_num'] = [max_group_num]
     results['do_optimal_mining_power_split'] = [do_optimal_mining_power_split]
-    results['participants_mining_powers'] = participants_mining_powers
+    results['participants_mining_powers'] = participants_mining_powers_copy
 
     results['block_mining_times'] = block_mining_times_copy
     results['block_mining_trial_nums'] = block_mining_trial_nums
@@ -457,13 +458,14 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
 
     # collect total results
+    participants_mining_powers_copy = copy.deepcopy(participants_mining_powers) # copy this list since it should be reused in other functions
     results = {}
     results['block_num_to_mine'] = [block_num_to_mine]
     results['total_difficulty_prob'] = [total_difficulty_prob]
     results['node_num_per_block'] = [node_num_per_block]
     results['node_mining_prob'] = [node_mining_prob]
     results['do_broadcast_per_node'] = [do_broadcast_per_node]
-    results['participants_mining_powers'] = participants_mining_powers
+    results['participants_mining_powers'] = participants_mining_powers_copy
     results['block_mining_times'] = block_mining_times
     results['block_mining_trial_nums'] = block_mining_trial_nums
     results['win_counts'] = win_counts
@@ -622,7 +624,7 @@ if __name__ == '__main__':
     bc_th_greedy = []
     bc_th_naive = []
     max_group_nums = [1, 100, 200, 500, 999]
-    bntm = 2000 # recommand: 2000
+    bntm = 1000 # recommand: 1000
     for mgn in max_group_nums:
         bmt, bc, file_name = simulate_mining_v1(block_num_to_mine = bntm, 
                        total_difficulty_prob= 0.0000000065,
