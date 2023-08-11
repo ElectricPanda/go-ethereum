@@ -69,4 +69,5 @@ impt/index/index_total/MANIFEST-000000
 
 build/bin/experiment/
 impt_experiment/
-core/blockchain.go
+simulator/results/
+simulator/graphs/
