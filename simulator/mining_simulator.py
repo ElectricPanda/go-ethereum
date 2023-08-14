@@ -90,6 +90,24 @@ def split_list_greedy(target_list, input_list):
 
 
 
+# get min, q1, med, q3, max, avg, std of list
+def get_list_stats(input_list):
+    stats = [min(input_list), np.percentile(input_list, 25), 
+            np.percentile(input_list, 50), np.percentile(input_list, 75), max(input_list),
+            np.average(input_list), np.std(input_list)]
+    stats = [round(stat, 3) for stat in stats]
+    return stats
+
+
+
+# print min, q1, med, q3, max, avg, std
+def print_list_stats(stats, list_name):
+    print(list_name, "stats\n  => min:", format(stats[0], ",.3f"), "/ q1:", format(stats[1], ",.3f"), "/ med:", format(stats[2], ",.3f"),
+          "/ q3:", format(stats[3], ",.3f"), "/ max:", format(stats[4], ",.3f"),
+          "( avg:", format(stats[5], ",.3f"), "/ std:", format(stats[6], ",.3f"), ")")
+
+
+
 # do_optimal_mining_power_split: divide mining power as evenly as possible through greedy algorithm 
 #   or naively divide mining power to have an equal number of participants in each miner group (about two times faster than the greedy algorithm)
 #
@@ -101,6 +119,9 @@ def split_list_greedy(target_list, input_list):
 # option 3) TH with one mining pool: node_num_per_block > 1, max_group_num > 1 (should be: node_num_per_block >> max_group_num)
 #  -> efficient heuristic strategy: simultaneously mining as many nodes as possible with similar mining power
 def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_block, max_group_num, do_optimal_mining_power_split, participants_mining_powers):
+    if block_num_to_mine == 0:
+        return [], [], ""
+    
     print("simulate_mining() start")
     start_time = datetime.now()
 
@@ -208,39 +229,34 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
 
     # print total results
-    print("\n\n********** FINAL RESULTS **********")
+    print("\n\n******************** SIM V1 RESULTS ********************")
     print("block_num_to_mine:", format(block_num_to_mine, ","))
     print("total_difficulty_prob:", total_difficulty_prob)
     print("node_num_per_block:", format(node_num_per_block, ","))
     print("node_mining_prob:", node_mining_prob)
-    print("participants num:", format(len(participants_mining_powers), ","))
-    print("total mining power:", format(sum(participants_mining_powers), ",.0f"),
-          "( min:", format(min(participants_mining_powers), ",.0f"),
-          "/ avg:", format(sum(participants_mining_powers)/len(participants_mining_powers), ",.0f"),
-          "/ max:", format(max(participants_mining_powers), ",.0f"), ")")
     print("do_optimal_mining_power_split:", do_optimal_mining_power_split)
     print("max_group_num:", format(max_group_num, ","))
+    print("participants num:", format(len(participants_mining_powers), ","))
+    print("total mining power:", format(sum(participants_mining_powers), ",.0f"))
+    print_list_stats(get_list_stats(participants_mining_powers), "participants mining powers")
     print("")
 
-    total_node_mining_times_sum = sum(sum(inner_list) for inner_list in total_node_mining_times)
-    total_node_mining_times_len = sum(len(inner_list) for inner_list in total_node_mining_times)
-    print("avg node mining time:", format(total_node_mining_times_sum/total_node_mining_times_len, ",.3f"))
-
-    total_node_mining_trial_nums_sum = sum(sum(inner_list) for inner_list in total_node_mining_trial_nums)
-    total_node_mining_trial_nums_len = sum(len(inner_list) for inner_list in total_node_mining_trial_nums)
-    print("avg node mining trial num:", format(total_node_mining_trial_nums_sum/total_node_mining_trial_nums_len, ",.3f"))
-
-    print("avg block mining time:", format(sum(block_mining_times)/len(block_mining_times), ",.3f"), "\n  =>",
-          "  min:", format(min(block_mining_times), ",.3f"),
-          "/ q1:", format(np.percentile(block_mining_times, 25), ",.3f"),
-          "/ med:", format(np.percentile(block_mining_times, 50), ",.3f"),
-          "/ q3:", format(np.percentile(block_mining_times, 75), ",.3f"),
-          "/ max:", format(max(block_mining_times), ",.3f"),
-          "/ std:", format(np.std(block_mining_times), ",.3f"), ")")
-    print("avg block mining trial num:", format(sum(block_mining_trial_nums)/len(block_mining_trial_nums), ",.3f"))
-
-    print("avg broadcast cost:", format(sum(broadcast_costs)/len(broadcast_costs), ",.3f"))
-    print("***********************************")
+    total_node_mining_times_flattened = np.array(total_node_mining_times).flatten().tolist()
+    print_list_stats(get_list_stats(total_node_mining_times_flattened), "node mining times")
+    print("")
+    total_node_mining_trial_nums_flattened = np.array(total_node_mining_trial_nums).flatten().tolist()
+    print_list_stats(get_list_stats(total_node_mining_trial_nums_flattened), "node mining trial nums")
+    print("")
+    block_mining_times_stats = get_list_stats(block_mining_times)
+    print_list_stats(block_mining_times_stats, "block mining times")
+    print("")
+    block_mining_trial_nums_stats = get_list_stats(block_mining_trial_nums)
+    print_list_stats(block_mining_trial_nums_stats, "block mining trial nums")
+    print("")
+    broadcast_costs_stats = get_list_stats(broadcast_costs)
+    print_list_stats(broadcast_costs_stats, "broadcast costs")
+    print("********************************************************")
+    print("\n\n\n\n")
 
 
 
@@ -294,6 +310,8 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
 
 def analyze_mining_simulation_results_v1(file_name):
+    if file_name == "":
+        return
 
     # read xlsx file
     df_read = pd.read_excel(RESULT_DATA_PATH+file_name, engine='openpyxl')
@@ -318,41 +336,34 @@ def analyze_mining_simulation_results_v1(file_name):
         total_node_mining_trial_nums[i] = ast.literal_eval(total_node_mining_trial_nums[i])
     
     # print total results
-    print("\n\n********** FINAL RESULTS **********")
+    print("\n\n******************** SIM V1 RESULTS ********************")
     print("block_num_to_mine:", format(block_num_to_mine, ","))
     print("total_difficulty_prob:", total_difficulty_prob)
     print("node_num_per_block:", format(node_num_per_block, ","))
     print("node_mining_prob:", node_mining_prob)
-    print("participants num:", format(len(participants_mining_powers), ","))
-    print("total mining power:", format(sum(participants_mining_powers), ",.0f"),
-          "( min:", format(min(participants_mining_powers), ",.0f"),
-          "/ avg:", format(sum(participants_mining_powers)/len(participants_mining_powers), ",.0f"),
-          "/ max:", format(max(participants_mining_powers), ",.0f"), ")")
     print("do_optimal_mining_power_split:", do_optimal_mining_power_split)
     print("max_group_num:", format(max_group_num, ","))
+    print("participants num:", format(len(participants_mining_powers), ","))
+    print("total mining power:", format(sum(participants_mining_powers), ",.0f"))
+    print_list_stats(get_list_stats(participants_mining_powers), "participants mining powers")
     print("")
 
-    total_node_mining_times_sum = sum(sum(inner_list) for inner_list in total_node_mining_times)
-    total_node_mining_times_len = sum(len(inner_list) for inner_list in total_node_mining_times)
-    print("avg node mining time:", format(total_node_mining_times_sum/total_node_mining_times_len, ",.3f"))
-
-    total_node_mining_trial_nums_sum = sum(sum(inner_list) for inner_list in total_node_mining_trial_nums)
-    total_node_mining_trial_nums_len = sum(len(inner_list) for inner_list in total_node_mining_trial_nums)
-    print("avg node mining trial num:", format(total_node_mining_trial_nums_sum/total_node_mining_trial_nums_len, ",.3f"))
-
-    print("avg block mining time:", format(sum(block_mining_times)/len(block_mining_times), ",.3f"), "\n  =>",
-          "  min:", format(min(block_mining_times), ",.3f"),
-          "/ q1:", format(np.percentile(block_mining_times, 25), ",.3f"),
-          "/ med:", format(np.percentile(block_mining_times, 50), ",.3f"),
-          "/ q3:", format(np.percentile(block_mining_times, 75), ",.3f"),
-          "/ max:", format(max(block_mining_times), ",.3f"),
-          "/ std:", format(np.std(block_mining_times), ",.3f"), ")")
-    print("avg block mining trial num:", format(sum(block_mining_trial_nums)/len(block_mining_trial_nums), ",.3f"))
-
-    print("avg broadcast cost:", format(sum(broadcast_costs)/len(broadcast_costs), ",.3f"))
-    print("***********************************")
-
-
+    total_node_mining_times_flattened = np.array(total_node_mining_times).flatten().tolist()
+    print_list_stats(get_list_stats(total_node_mining_times_flattened), "node mining times")
+    print("")
+    total_node_mining_trial_nums_flattened = np.array(total_node_mining_trial_nums).flatten().tolist()
+    print_list_stats(get_list_stats(total_node_mining_trial_nums_flattened), "node mining trial nums")
+    print("")
+    block_mining_times_stats = get_list_stats(block_mining_times)
+    print_list_stats(block_mining_times_stats, "block mining times")
+    print("")
+    block_mining_trial_nums_stats = get_list_stats(block_mining_trial_nums)
+    print_list_stats(block_mining_trial_nums_stats, "block mining trial nums")
+    print("")
+    broadcast_costs_stats = get_list_stats(broadcast_costs)
+    print_list_stats(broadcast_costs_stats, "broadcast costs")
+    print("********************************************************")
+    print("\n\n\n\n")
 
 
 
@@ -376,6 +387,9 @@ def analyze_mining_simulation_results_v1(file_name):
 # option 4) ETH with independent miners: node_num_per_block = 1, do_broadcast_per_node = False
 #   -> miners receive rewards proportional to their mining power
 def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_block, do_broadcast_per_node, participants_mining_powers):
+    if block_num_to_mine == 0:
+        return [], ""
+    
     print("simulate_mining() start")
     start_time = datetime.now()
 
@@ -419,46 +433,45 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
 
     # print final results
-    print("\n\n********** FINAL RESULTS **********")
+    print("\n\n******************** SIM V2 RESULTS ********************")
     print("block_num_to_mine:", format(block_num_to_mine, ","))
     print("total_difficulty_prob:", total_difficulty_prob)
     print("node_num_per_block:", format(node_num_per_block, ","))
     print("node_mining_prob:", node_mining_prob)
-    print("participants num:", format(len(participants_mining_powers), ","))
-    print("total mining power:", format(sum(participants_mining_powers), ",.0f"),
-          "( min:", format(min(participants_mining_powers), ",.0f"),
-          "/ avg:", format(sum(participants_mining_powers)/len(participants_mining_powers), ",.0f"),
-          "/ max:", format(max(participants_mining_powers), ",.0f"), ")")
     print("do_broadcast_per_node:", do_broadcast_per_node)
+    print("participants num:", format(len(participants_mining_powers), ","))
+    print("total mining power:", format(sum(participants_mining_powers), ",.0f"))
+    print_list_stats(get_list_stats(participants_mining_powers), "participants mining powers")
     print("")
 
-    print("avg block mining time:", format(sum(block_mining_times)/len(block_mining_times), ",.3f"))
-    print("avg block mining trial num:", format(sum(block_mining_trial_nums)/len(block_mining_trial_nums), ",.3f"))
-
-    print("avg broadcast cost:", format(sum(broadcast_costs)/len(broadcast_costs), ",.3f"))
-
+    block_mining_times_stats = get_list_stats(block_mining_times)
+    block_mining_trial_nums_stats = get_list_stats(block_mining_trial_nums)
+    print_list_stats(block_mining_times_stats, "block mining times")
+    print("")
+    print_list_stats(block_mining_trial_nums_stats, "block mining trial nums")
+    print("")
+    
     # win_counts was measured, analyze it
     if not do_broadcast_per_node:
         reward_per_unit_mining_power = [win_count / mining_power for win_count, mining_power in zip(win_counts, participants_mining_powers)]
         avg_reward = sum(reward_per_unit_mining_power)/len(reward_per_unit_mining_power)
         reward_per_unit_mining_power = [round(reward/avg_reward, 3) for reward in reward_per_unit_mining_power] # normalize
-        print("reward per unit mining power (sum:", format(sum(reward_per_unit_mining_power), ",.0f"),
-            "/ avg is normalized to 1.000, thus inequality occurs when the min and max values deviate significantly from 1) \n  => min:", min(reward_per_unit_mining_power),
-            "/ q1:", np.percentile(reward_per_unit_mining_power, 25),
-            "/ med:", np.percentile(reward_per_unit_mining_power, 50),
-            "/ q3:", np.percentile(reward_per_unit_mining_power, 75),
-            "/ max:", max(reward_per_unit_mining_power))
+        print_list_stats(get_list_stats(reward_per_unit_mining_power), "reward per unit mining power (avg is normalized to 1, thus inequality occurs when the min and max values deviate significantly from 1)")
         
         top_winner_num_to_print = min(10, len(reward_per_unit_mining_power))
         reward_per_unit_mining_power.sort()
         print("  => top winners' rewards:", reward_per_unit_mining_power[-top_winner_num_to_print:])
-        
-    print("***********************************")
+    
+    print("")
+    print("avg broadcast cost:", format(np.average(broadcast_costs), ",.3f"))
+    print("********************************************************")
+    print("\n\n\n\n")
 
 
 
     # collect total results
     participants_mining_powers_copy = copy.deepcopy(participants_mining_powers) # copy this list since it should be reused in other functions
+    win_counts_copy = copy.deepcopy(win_counts) # copy this list since it should be returned without modification
     results = {}
     results['block_num_to_mine'] = [block_num_to_mine]
     results['total_difficulty_prob'] = [total_difficulty_prob]
@@ -466,10 +479,10 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     results['node_mining_prob'] = [node_mining_prob]
     results['do_broadcast_per_node'] = [do_broadcast_per_node]
     results['participants_mining_powers'] = participants_mining_powers_copy
-    results['block_mining_times'] = block_mining_times
-    results['block_mining_trial_nums'] = block_mining_trial_nums
-    results['win_counts'] = win_counts
-    results['broadcast_costs'] = broadcast_costs
+    results['block_mining_times_stats'] = block_mining_times_stats
+    results['block_mining_trial_nums_stats'] = block_mining_trial_nums_stats
+    results['win_counts'] = win_counts_copy
+    results['broadcast_costs'] = [np.average(broadcast_costs)]
 
     # find max length list
     maxLen = -1
@@ -497,11 +510,14 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     end_time = datetime.now()
     print("\nsimulation execution time:", end_time-start_time)
 
-    return file_name
+    return win_counts, file_name
 
 
 
 def analyze_mining_simulation_results_v2(file_name):
+    if file_name == "":
+        return
+
     # read xlsx file
     df_read = pd.read_excel(RESULT_DATA_PATH+file_name, engine='openpyxl')
 
@@ -512,80 +528,109 @@ def analyze_mining_simulation_results_v2(file_name):
     node_mining_prob = df_read['node_mining_prob'].dropna().tolist()[0]
     do_broadcast_per_node = bool(int(df_read['do_broadcast_per_node'].dropna().tolist()[0]))
     participants_mining_powers = df_read['participants_mining_powers'].dropna().tolist()
-    block_mining_times = df_read['block_mining_times'].dropna().tolist()
-    block_mining_trial_nums = df_read['block_mining_trial_nums'].dropna().tolist()
+    block_mining_times_stats = df_read['block_mining_times_stats'].dropna().tolist()
+    block_mining_trial_nums_stats = df_read['block_mining_trial_nums_stats'].dropna().tolist()
     win_counts = df_read['win_counts'].dropna().tolist()
     broadcast_costs = df_read['broadcast_costs'].dropna().tolist()
 
     # print final results
-    print("\n\n********** FINAL RESULTS **********")
+    print("\n\n******************** SIM V2 RESULTS ********************")
     print("block_num_to_mine:", format(block_num_to_mine, ","))
     print("total_difficulty_prob:", total_difficulty_prob)
     print("node_num_per_block:", format(node_num_per_block, ","))
     print("node_mining_prob:", node_mining_prob)
-    print("participants num:", format(len(participants_mining_powers), ","))
-    print("total mining power:", format(sum(participants_mining_powers), ",.0f"),
-          "( min:", format(min(participants_mining_powers), ",.0f"),
-          "/ avg:", format(sum(participants_mining_powers)/len(participants_mining_powers), ",.0f"),
-          "/ max:", format(max(participants_mining_powers), ",.0f"), ")")
     print("do_broadcast_per_node:", do_broadcast_per_node)
+    print("participants num:", format(len(participants_mining_powers), ","))
+    print("total mining power:", format(sum(participants_mining_powers), ",.0f"))
+    print_list_stats(get_list_stats(participants_mining_powers), "participants mining powers")
     print("")
 
-    print("avg block mining time:", format(sum(block_mining_times)/len(block_mining_times), ",.3f"))
-    print("avg block mining trial num:", format(sum(block_mining_trial_nums)/len(block_mining_trial_nums), ",.3f"))
-    print("avg broadcast cost:", format(sum(broadcast_costs)/len(broadcast_costs), ",.3f"))
+    print_list_stats(block_mining_times_stats, "block mining times")
+    print("")
+    print_list_stats(block_mining_trial_nums_stats, "block mining trial nums")
+    print("")
 
     # win_counts was measured, analyze it
     if not do_broadcast_per_node:
         reward_per_unit_mining_power = [win_count / mining_power for win_count, mining_power in zip(win_counts, participants_mining_powers)]
         avg_reward = sum(reward_per_unit_mining_power)/len(reward_per_unit_mining_power)
         reward_per_unit_mining_power = [round(reward/avg_reward, 3) for reward in reward_per_unit_mining_power] # normalize
-        print("reward per unit mining power (sum:", format(sum(reward_per_unit_mining_power), ",.0f"),
-            "/ avg is normalized to 1.000, thus inequality occurs when the min and max values deviate significantly from 1) \n  => min:", min(reward_per_unit_mining_power),
-            "/ q1:", np.percentile(reward_per_unit_mining_power, 25),
-            "/ med:", np.percentile(reward_per_unit_mining_power, 50),
-            "/ q3:", np.percentile(reward_per_unit_mining_power, 75),
-            "/ max:", max(reward_per_unit_mining_power))
+        print_list_stats(get_list_stats(reward_per_unit_mining_power), "reward per unit mining power (avg is normalized to 1, thus inequality occurs when the min and max values deviate significantly from 1)")
 
+        top_winner_num_to_print = min(10, len(reward_per_unit_mining_power))
+        reward_per_unit_mining_power.sort()
+        print("  => top winners' rewards:", reward_per_unit_mining_power[-top_winner_num_to_print:])
+
+    print("")
+    print("avg broadcast cost:", format(sum(broadcast_costs)/len(broadcast_costs), ",.3f"))
+    print("********************************************************")
+    print("\n\n\n\n")
+
+
+
+
+def draw_box_plot_mining_time(bmt_lists, labels, graph_name_suffix):
+
+    plt.figure()
+    plt.title("block mining times")
+    plt.xlabel('type of mining pool')
+    plt.ylabel('sec')
+    plt.boxplot(bmt_lists, whis = 1.5)
+    idx = range(1, 1+len(labels))
+    plt.xticks(idx, labels)
+    plt.savefig(GRAPH_PATH + "blockMiningTimes_" + graph_name_suffix + ".png")
+
+
+
+def draw_box_plot_broadcast_cost(bmt_lists, labels, graph_name_suffix):
+
+    plt.figure()
+    fig, ax = plt.subplots()
+    plt.title("broadcast cost per block")
+    plt.xlabel('type of mining pool (with percentage of # of leaf nodes)')
+    plt.ylabel('# of participants')
+    idx = range(1, 1+len(labels))
+    bp = ax.boxplot(bmt_lists, whis = 1.5, positions=idx)
+    plt.xticks(idx, labels)
+
+    # show avgs & stds in graph
+    # avgs = []
+    # stds = []
+    # for bc in bc_th_greedy + [bc_eth]:
+    #     avgs.append(sum(bc)/len(bc))
+    #     stds.append(np.std(bc))
+    # for i, line in enumerate(bp['medians']):
+    #     x, y = line.get_xydata()[1]
+    #     text = ' avg={:.0f}\n std={:.0f}'.format(avgs[i], stds[i])
+    #     ax.annotate(text, xy=(x, y))
+    # print("avgs:", avgs)
+    # print("stds:", stds)
+
+    plt.savefig(GRAPH_PATH + "broadcastCost_" + graph_name_suffix + ".png")
+
+
+
+def draw_plot_win_count(win_counts, participants_mining_powers, graph_name_suffix):
+
+    # win_counts was measured, analyze it
+    if sum(win_counts) != 0:
         # draw graph
-        plt.figure()
-        plt.title('reward per unit mining power (nodeNum:' + str(node_num_per_block) + ')', pad=10)
-        plt.xlabel('participant index (weak <-> strong)', labelpad=10)
-        plt.ylabel('reward / mining power (avg is normalized to 1)', labelpad=10)
-        graphName = "rewardPerUnitMiningPower"
-        if node_num_per_block == 1:
-            graphName += "_ETH"
-        else:
-            graphName += "_TH"
-            plt.yscale('log', base=10)
-        # plt.plot(range(len(participants_mining_powers)), reward_per_unit_mining_power)
-        plt.scatter(range(len(participants_mining_powers)), reward_per_unit_mining_power)
-        plt.savefig(GRAPH_PATH+graphName+".png")
-
         # create figure and axis objects with subplots()
         fig,ax = plt.subplots()
         # ax.plot(range(len(participants_mining_powers)), participants_mining_powers, color="red", marker="o", markersize=4)
         ax.scatter(range(len(participants_mining_powers)), participants_mining_powers, color="red", s=9)
         ax.set_xlabel("participant index (weak <-> strong)", fontsize = 14)
         ax.set_ylabel("mining power", color="red", fontsize=14)
+        ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
 
         # twin object for two different y-axis on the sample plot
         ax2=ax.twinx()
         # ax2.plot(range(len(participants_mining_powers)), win_counts, color="blue", marker="o", markersize=2)
         ax2.scatter(range(len(participants_mining_powers)), win_counts, color="blue", s=3)
         ax2.set_ylabel("# of mined blocks", color="blue", fontsize=14)
-        graphName = "miningPowersAndRewards"
-        if node_num_per_block == 1:
-            graphName += "_ETH"
-        else:
-            graphName += "_TH"
-        fig.savefig(GRAPH_PATH+graphName+".png")
+        ax2.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
 
-        top_winner_num_to_print = min(10, len(reward_per_unit_mining_power))
-        reward_per_unit_mining_power.sort()
-        print("  => top winners' rewards:", reward_per_unit_mining_power[-top_winner_num_to_print:])
-
-    print("***********************************")
+        fig.savefig(GRAPH_PATH + "miningPowersAndRewards_" + graph_name_suffix + ".png")
 
 
 
@@ -595,6 +640,21 @@ if __name__ == '__main__':
 
     start_time = datetime.now()
 
+    #
+    # set simulation params
+    #
+
+    # bntm: block num to mine
+    bntm_for_eth_mining_times = 1000 # recommand: 1000000
+    bntm_for_th_broadcast_costs = 5 # recommand: 1000
+    bntm_for_mining_rewards = 1000 # recommand: for 100 participants: 1000000 / for 1,000 participants: 5000000
+    # nnpb: node num per block
+    nnpb_for_th = 1000
+    # set how many leaf nodes in TH
+    max_group_nums = [1, int(nnpb_for_th*0.1), int(nnpb_for_th*0.2), int(nnpb_for_th*0.5), nnpb_for_th-1]
+    th_labels = ['TH_1', 'TH_10', 'TH_20', 'TH_50', 'TH_99']
+    # total difficulty probability
+    tdp = 0.0000000065
     # generate random mining powers
     participants_mining_powers = gen_mining_powers_pareto(participants_num = 1000,
                                                           total_mining_power= 10000000,
@@ -608,128 +668,57 @@ if __name__ == '__main__':
 
     # option 1) ETH with one mining pool: node_num_per_block = 1
     #  -> ETH's block mining time shows a large deviation unlike TH's
-    bmt_eth, bc_eth, file_name = simulate_mining_v1(block_num_to_mine = 1000000, # recommand: 1000000
-                       total_difficulty_prob= 0.0000000065,
+    bmt_eth, bc_eth, file_name = simulate_mining_v1(block_num_to_mine = bntm_for_eth_mining_times,
+                       total_difficulty_prob= tdp,
                        node_num_per_block = 1,
                        max_group_num = 1,
                        do_optimal_mining_power_split = False,
                        participants_mining_powers = participants_mining_powers)
+    # analyze_mining_simulation_results_v1(file_name)
 
     # option 2) TH with one mining pool: node_num_per_block > 1, max_group_num = 1
     #  -> all miners mine on one node at the same time (strategy with maximum broadcast cost)
     # option 3) TH with one mining pool: node_num_per_block > 1, max_group_num > 1 (should be: node_num_per_block >> max_group_num)
     #  -> efficient heuristic strategy: simultaneously mining as many nodes as possible with similar mining power
     bmt_th_greedy = []
-    bmt_th_naive = []
     bc_th_greedy = []
-    bc_th_naive = []
-    max_group_nums = [1, 100, 200, 500, 999]
-    bntm = 1000 # recommand: 1000
     for mgn in max_group_nums:
-        bmt, bc, file_name = simulate_mining_v1(block_num_to_mine = bntm, 
-                       total_difficulty_prob= 0.0000000065,
-                       node_num_per_block = 1000,
+        bmt, bc, file_name = simulate_mining_v1(block_num_to_mine = bntm_for_th_broadcast_costs,
+                       total_difficulty_prob= tdp,
+                       node_num_per_block = nnpb_for_th,
                        max_group_num = mgn,
                        do_optimal_mining_power_split = True,
                        participants_mining_powers = participants_mining_powers)
+        # analyze_mining_simulation_results_v1(file_name)
         bmt_th_greedy.append(bmt)
         bc_th_greedy.append(bc)
     
-    plt.figure()
-    plt.title("block mining times")
-    plt.xlabel('type of mining pool')
-    plt.ylabel('sec')
-    plt.boxplot([bmt_eth], whis = 1.5)
-    idx = range(1, 2)
-    labels = ['ETH']
-    plt.xticks(idx, labels)
-    plt.savefig(GRAPH_PATH+"blockMiningTimes_ETH.png")
-    #
-    plt.figure()
-    plt.title("block mining times")
-    plt.xlabel('type of mining pool (with percentage of # of leaf nodes)')
-    plt.ylabel('sec')
-    plt.boxplot(bmt_th_greedy, whis = 1.5)
-    idx = range(1, 6)
-    labels = ('TH_1', 'TH_10', 'TH_20', 'TH_50', 'TH_99')
-    plt.xticks(idx, labels)
-    plt.savefig(GRAPH_PATH+"blockMiningTimes_TH_greedy.png")
-    #
-    plt.figure()
-    fig, ax = plt.subplots()
-    plt.title("broadcast cost per block")
-    plt.xlabel('type of mining pool (with percentage of # of leaf nodes)')
-    plt.ylabel('# of participants')
-    # idx = range(1, 7)
-    # bp = ax.boxplot(bc_th_greedy + [bc_eth], whis = 1.5, positions=idx)
-    # labels = ('TH_1', 'TH_10', 'TH_20', 'TH_50', 'TH_99', 'ETH')
-    idx = range(1, 6)
-    bp = ax.boxplot(bc_th_greedy[1:] + [bc_eth], whis = 1.5, positions=idx)
-    labels = ('TH_10', 'TH_20', 'TH_50', 'TH_99', 'ETH')
-    plt.xticks(idx, labels)
-    avgs = []
-    stds = []
-    for bc in bc_th_greedy + [bc_eth]:
-        avgs.append(sum(bc)/len(bc))
-        stds.append(np.std(bc))
-    # for i, line in enumerate(bp['medians']):
-    #     x, y = line.get_xydata()[1]
-    #     text = ' avg={:.0f}\n std={:.0f}'.format(avgs[i], stds[i])
-    #     ax.annotate(text, xy=(x, y))
-    plt.savefig(GRAPH_PATH+"broadcastCost_greedy.png")
-    print("avgs:", avgs)
-    print("stds:", stds)
-
-
-
+    bmt_th_naive = []
+    bc_th_naive = []
     for mgn in max_group_nums:
-        bmt, bc, file_name = simulate_mining_v1(block_num_to_mine = bntm, 
-                       total_difficulty_prob= 0.0000000065,
-                       node_num_per_block = 1000,
+        bmt, bc, file_name = simulate_mining_v1(block_num_to_mine = bntm_for_th_broadcast_costs,
+                       total_difficulty_prob= tdp,
+                       node_num_per_block = nnpb_for_th,
                        max_group_num = mgn,
                        do_optimal_mining_power_split = False,
                        participants_mining_powers = participants_mining_powers)
+        # analyze_mining_simulation_results_v1(file_name)
         bmt_th_naive.append(bmt)
         bc_th_naive.append(bc)
 
-    #
-    plt.figure()
-    plt.title("block mining times")
-    plt.xlabel('type of mining pool (with percentage of # of leaf nodes)')
-    plt.ylabel('sec')
-    plt.boxplot(bmt_th_naive, whis = 1.5)
-    idx = range(1, 6)
-    labels = ('TH_1', 'TH_10', 'TH_20', 'TH_50', 'TH_99')
-    plt.xticks(idx, labels)
-    plt.savefig(GRAPH_PATH+"blockMiningTimes_TH_naive.png")
-    #
-    plt.figure()
-    fig, ax = plt.subplots()
-    plt.title("broadcast cost per block")
-    plt.xlabel('type of mining pool (with percentage of # of leaf nodes)')
-    plt.ylabel('# of participants')
-    # idx = range(1, 31, 5)
-    # idx = range(1, 7)
-    # bp = ax.boxplot(bc_th_naive + [bc_eth], whis = 1.5, positions=idx)
-    # labels = ('TH_1', 'TH_10', 'TH_20', 'TH_50', 'TH_99', 'ETH')
-    idx = range(1, 6)
-    bp = ax.boxplot(bc_th_naive[1:] + [bc_eth], whis = 1.5, positions=idx)
-    labels = ('TH_10', 'TH_20', 'TH_50', 'TH_99', 'ETH')
-    plt.xticks(idx, labels)
-    avgs = []
-    stds = []
-    for bc in bc_th_naive + [bc_eth]:
-        avgs.append(sum(bc)/len(bc))
-        stds.append(np.std(bc))
-    # for i, line in enumerate(bp['medians']):
-    #     x, y = line.get_xydata()[1]
-    #     text = ' avg={:.0f}\n std={:.0f}'.format(avgs[i], stds[i])
-    #     ax.annotate(text, xy=(x, y))
-    plt.savefig(GRAPH_PATH+"broadcastCost_naive.png")
-    print("avgs:", avgs)
-    print("stds:", stds)
+    # draw box plots for block mining times
+    if bntm_for_eth_mining_times != 0:
+        draw_box_plot_mining_time([bmt_eth], ['ETH'], 'ETH')
+    if bntm_for_th_broadcast_costs != 0:
+        draw_box_plot_mining_time(bmt_th_greedy, th_labels, 'TH_greedy')
+        draw_box_plot_mining_time(bmt_th_naive, th_labels, 'TH_naive')
 
-
+    # draw box plots for broadcast costs
+    if bntm_for_th_broadcast_costs != 0:
+        if bntm_for_eth_mining_times == 0:
+            bc_eth = [len(participants_mining_powers)]
+        draw_box_plot_broadcast_cost(bc_th_greedy[1:] + [bc_eth], th_labels[1:] + ['ETH'], 'greedy')
+        draw_box_plot_broadcast_cost(bc_th_naive[1:] + [bc_eth], th_labels[1:] + ['ETH'], 'naive')
 
 
 
@@ -739,28 +728,36 @@ if __name__ == '__main__':
 
     # option 1) ETH with independent miners: node_num_per_block = 1, do_broadcast_per_node = False
     #   -> miners receive rewards proportional to their mining power
-    simulate_mining_v2(block_num_to_mine = 5000000, # for 100 participants: 1000000 / for 1,000 participants: 5000000
-                       total_difficulty_prob = 0.0000000065, # recommanded value: 0.0000000065
-                       node_num_per_block = 1, 
-                       do_broadcast_per_node = False, 
-                       participants_mining_powers = participants_mining_powers)
+    wc_eth, file_name = simulate_mining_v2(block_num_to_mine = bntm_for_mining_rewards,
+                                           total_difficulty_prob = tdp,
+                                           node_num_per_block = 1,
+                                           do_broadcast_per_node = False,
+                                           participants_mining_powers = participants_mining_powers)
+    # analyze_mining_simulation_results_v2(file_name)
 
     # option 2) TH with independent miners: node_num_per_block > 1, do_broadcast_per_node = False
     #   -> miners cannot receive rewards proportional to their mining power
     #   this option can be seen as a stupid mining pool
     #   so even if we retain only the most powerful miner, the outcome remains unchanged (i.e., weak participants are useless)
-    simulate_mining_v2(block_num_to_mine = 5000000, # for 100 participants: 1,000,000 / for 1,000 participants: 5,000,000
-                       total_difficulty_prob = 0.0000000065, # recommanded value: 0.0000000065
-                       node_num_per_block = 1000, 
-                       do_broadcast_per_node = False, 
-                       participants_mining_powers = participants_mining_powers)
+    wc_th, file_name = simulate_mining_v2(block_num_to_mine = bntm_for_mining_rewards,
+                                          total_difficulty_prob = tdp,
+                                          node_num_per_block = nnpb_for_th,
+                                          do_broadcast_per_node = False,
+                                          participants_mining_powers = participants_mining_powers)
+    # analyze_mining_simulation_results_v2(file_name)
     
-    # # option 3) to prove stupid TH mining pool's inefficiency: show same result with only one miner
-    # simulate_mining_v2(block_num_to_mine = 5000000,
-    #                    total_difficulty_prob = 0.0000000065, # recommanded value: 0.0000000065
-    #                    node_num_per_block = 1000, 
-    #                    do_broadcast_per_node = False, 
-    #                    participants_mining_powers = [max(participants_mining_powers)])
+    # option 3) to prove stupid TH mining pool's inefficiency: show same result with only one miner
+    wc, file_name = simulate_mining_v2(block_num_to_mine = bntm_for_mining_rewards,
+                                       total_difficulty_prob = tdp,
+                                       node_num_per_block = nnpb_for_th,
+                                       do_broadcast_per_node = False,
+                                       participants_mining_powers = [max(participants_mining_powers)])
+    # analyze_mining_simulation_results_v2(file_name)
+
+    # draw plots for win counts
+    if bntm_for_mining_rewards != 0:
+        draw_plot_win_count(wc_eth, participants_mining_powers, 'ETH')
+        draw_plot_win_count(wc_th, participants_mining_powers, 'TH')
 
 
 
