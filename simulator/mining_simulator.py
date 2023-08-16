@@ -1,4 +1,4 @@
-import random, sys
+import random, sys, os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,8 +9,10 @@ import ast
 import copy
 from pytz import timezone
 
-GRAPH_PATH = 'graphs/'  # result graph image path
-RESULT_DATA_PATH = 'results/' # result raw data path
+SIM_START_TIME = datetime.now(timezone('Asia/Seoul')).strftime("%Y-%m-%d_%H-%M-%S.%f")[:-3]
+GRAPH_PATH = 'graphs/' + SIM_START_TIME + '/'  # result graph image path
+RESULT_DATA_PATH = 'results/' + SIM_START_TIME + '/' # result raw data path
+PARTICIPANTS_MINING_POWERS_PATH = 'miningPowers/'
 
 
 
@@ -57,10 +59,33 @@ class MinerGroup:
 
 
 # generate random mining powers following pareto distribution
-def gen_mining_powers_pareto(participants_num, total_mining_power, pareto_alpha):
+def gen_mining_powers_pareto(participants_num, total_mining_power, pareto_alpha, read_existing):
+
+    if read_existing:
+        try:
+            # try to read existing one
+            file_name = f"participant_mining_powers_pareto_{participants_num}_{total_mining_power}_{pareto_alpha}.xlsx"
+            df_read = pd.read_excel(PARTICIPANTS_MINING_POWERS_PATH+file_name, engine='openpyxl')
+            participants_mining_powers = df_read['participants_mining_powers'].dropna().tolist()
+            return participants_mining_powers
+        except:
+            pass
+
+    # generate new participant mining powers
     participants_mining_powers = pareto.rvs(pareto_alpha, size=participants_num)
     participants_mining_powers = [round(x * total_mining_power/sum(participants_mining_powers), 3) for x in participants_mining_powers] # normalize for fair comparison
     participants_mining_powers.sort(reverse=True)
+    
+    # save participant mining powers as xlsx file
+    results = {}
+    results['participants_mining_powers'] = participants_mining_powers
+    df = pd.DataFrame(results)
+    file_name = f"participant_mining_powers_pareto_{participants_num}_{total_mining_power}_{pareto_alpha}.xlsx"
+    excel_writer = pd.ExcelWriter(PARTICIPANTS_MINING_POWERS_PATH+file_name, engine='openpyxl')
+    # df.to_excel(excel_writer, sheet_name='Sheet1', index=False)
+    df.to_excel(excel_writer, index=False)
+    excel_writer.save()
+
     return participants_mining_powers
 
 
@@ -118,7 +143,8 @@ def print_list_stats(stats, list_name):
 #
 # option 3) TH with one mining pool: node_num_per_block > 1, max_group_num > 1 (should be: node_num_per_block >> max_group_num)
 #  -> efficient heuristic strategy: simultaneously mining as many nodes as possible with similar mining power
-def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_block, max_group_num, do_optimal_mining_power_split, participants_mining_powers):
+def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_block, 
+                       max_group_num, do_optimal_mining_power_split, participants_mining_powers, result_file_suffix):
     if block_num_to_mine == 0:
         return [], [], ""
     
@@ -292,9 +318,7 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
     # save results as xlsx file
     df = pd.DataFrame(results)
-    now_time = datetime.now(timezone('Asia/Seoul')).strftime("%Y-%m-%d_%H-%M-%S")
-    file_name = f"sim_result_v1_{now_time}.xlsx"
-    # file_name = 'data.xlsx' # temp code, delete this later
+    file_name = f"sim_result_v1_{result_file_suffix}.xlsx"
     excel_writer = pd.ExcelWriter(RESULT_DATA_PATH+file_name, engine='openpyxl')
     # df.to_excel(excel_writer, sheet_name='Sheet1', index=False)
     df.to_excel(excel_writer, index=False)
@@ -386,7 +410,8 @@ def analyze_mining_simulation_results_v1(file_name):
 #
 # option 4) ETH with independent miners: node_num_per_block = 1, do_broadcast_per_node = False
 #   -> miners receive rewards proportional to their mining power
-def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_block, do_broadcast_per_node, participants_mining_powers):
+def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_block, 
+                       do_broadcast_per_node, participants_mining_powers, result_file_suffix):
     if block_num_to_mine == 0:
         return [], ""
     
@@ -497,9 +522,7 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
     # save results as xlsx file
     df = pd.DataFrame(results)
-    now_time = datetime.now(timezone('Asia/Seoul')).strftime("%Y-%m-%d_%H-%M-%S")
-    file_name = f"sim_result_v2_{now_time}.xlsx"
-    # file_name = 'data.xlsx' # temp code, delete this later
+    file_name = f"sim_result_v2_{result_file_suffix}.xlsx"
     excel_writer = pd.ExcelWriter(RESULT_DATA_PATH+file_name, engine='openpyxl')
     # df.to_excel(excel_writer, sheet_name='Sheet1', index=False)
     df.to_excel(excel_writer, index=False)
@@ -640,14 +663,19 @@ if __name__ == '__main__':
 
     start_time = datetime.now()
 
+    # make dirs for simulation results
+    os.makedirs(GRAPH_PATH, exist_ok = True)
+    os.makedirs(RESULT_DATA_PATH, exist_ok = True)
+    os.makedirs(PARTICIPANTS_MINING_POWERS_PATH, exist_ok = True)
+
     #
     # set simulation params
     #
 
     # bntm: block num to mine
-    bntm_for_eth_mining_times = 1000 # recommand: 1000000
-    bntm_for_th_broadcast_costs = 5 # recommand: 1000
-    bntm_for_mining_rewards = 1000 # recommand: for 100 participants: 1000000 / for 1,000 participants: 5000000
+    bntm_for_eth_mining_times = 100000 # recommand: 100000
+    bntm_for_th_broadcast_costs = 1000 # recommand: 1000
+    bntm_for_mining_rewards = 5000000 # recommand: for 100 participants: 1000000 / for 1,000 participants: 5000000
     # nnpb: node num per block
     nnpb_for_th = 1000
     # set how many leaf nodes in TH
@@ -657,8 +685,9 @@ if __name__ == '__main__':
     tdp = 0.0000000065
     # generate random mining powers
     participants_mining_powers = gen_mining_powers_pareto(participants_num = 1000,
-                                                          total_mining_power= 10000000,
-                                                          pareto_alpha= 5)
+                                                          total_mining_power = 10000000,
+                                                          pareto_alpha = 5,
+                                                          read_existing = True)
 
 
 
@@ -673,7 +702,8 @@ if __name__ == '__main__':
                        node_num_per_block = 1,
                        max_group_num = 1,
                        do_optimal_mining_power_split = False,
-                       participants_mining_powers = participants_mining_powers)
+                       participants_mining_powers = participants_mining_powers,
+                       result_file_suffix = 'ETH')
     # analyze_mining_simulation_results_v1(file_name)
 
     # option 2) TH with one mining pool: node_num_per_block > 1, max_group_num = 1
@@ -682,26 +712,28 @@ if __name__ == '__main__':
     #  -> efficient heuristic strategy: simultaneously mining as many nodes as possible with similar mining power
     bmt_th_greedy = []
     bc_th_greedy = []
-    for mgn in max_group_nums:
+    for index, mgn in enumerate(max_group_nums):
         bmt, bc, file_name = simulate_mining_v1(block_num_to_mine = bntm_for_th_broadcast_costs,
                        total_difficulty_prob= tdp,
                        node_num_per_block = nnpb_for_th,
                        max_group_num = mgn,
                        do_optimal_mining_power_split = True,
-                       participants_mining_powers = participants_mining_powers)
+                       participants_mining_powers = participants_mining_powers,
+                       result_file_suffix = th_labels[index]+'_greedy')
         # analyze_mining_simulation_results_v1(file_name)
         bmt_th_greedy.append(bmt)
         bc_th_greedy.append(bc)
     
     bmt_th_naive = []
     bc_th_naive = []
-    for mgn in max_group_nums:
+    for index, mgn in enumerate(max_group_nums):
         bmt, bc, file_name = simulate_mining_v1(block_num_to_mine = bntm_for_th_broadcast_costs,
                        total_difficulty_prob= tdp,
                        node_num_per_block = nnpb_for_th,
                        max_group_num = mgn,
                        do_optimal_mining_power_split = False,
-                       participants_mining_powers = participants_mining_powers)
+                       participants_mining_powers = participants_mining_powers,
+                       result_file_suffix = th_labels[index]+'_naive')
         # analyze_mining_simulation_results_v1(file_name)
         bmt_th_naive.append(bmt)
         bc_th_naive.append(bc)
@@ -732,7 +764,8 @@ if __name__ == '__main__':
                                            total_difficulty_prob = tdp,
                                            node_num_per_block = 1,
                                            do_broadcast_per_node = False,
-                                           participants_mining_powers = participants_mining_powers)
+                                           participants_mining_powers = participants_mining_powers,
+                                           result_file_suffix = 'ETH')
     # analyze_mining_simulation_results_v2(file_name)
 
     # option 2) TH with independent miners: node_num_per_block > 1, do_broadcast_per_node = False
@@ -743,15 +776,17 @@ if __name__ == '__main__':
                                           total_difficulty_prob = tdp,
                                           node_num_per_block = nnpb_for_th,
                                           do_broadcast_per_node = False,
-                                          participants_mining_powers = participants_mining_powers)
+                                          participants_mining_powers = participants_mining_powers,
+                                          result_file_suffix = 'TH')
     # analyze_mining_simulation_results_v2(file_name)
     
     # option 3) to prove stupid TH mining pool's inefficiency: show same result with only one miner
-    wc, file_name = simulate_mining_v2(block_num_to_mine = bntm_for_mining_rewards,
+    wc, file_name = simulate_mining_v2(block_num_to_mine = 100000,
                                        total_difficulty_prob = tdp,
                                        node_num_per_block = nnpb_for_th,
                                        do_broadcast_per_node = False,
-                                       participants_mining_powers = [max(participants_mining_powers)])
+                                       participants_mining_powers = [max(participants_mining_powers)],
+                                       result_file_suffix = 'TH_solo')
     # analyze_mining_simulation_results_v2(file_name)
 
     # draw plots for win counts
@@ -762,3 +797,4 @@ if __name__ == '__main__':
 
 
     print('\nend simulation, total elapsed time:', datetime.now()-start_time)
+    print("result dirs:", RESULT_DATA_PATH, "&", GRAPH_PATH)
