@@ -9,6 +9,7 @@ import ast
 import copy
 from pytz import timezone
 
+SHOW_PROCESS = True # print current block number or not
 SIM_START_TIME = datetime.now(timezone('Asia/Seoul')).strftime("%Y-%m-%d_%H-%M-%S.%f")[:-3]
 GRAPH_PATH = 'graphs/' + SIM_START_TIME + '/'  # result graph image path
 RESULT_DATA_PATH = 'results/' + SIM_START_TIME + '/' # result raw data path
@@ -148,7 +149,7 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     if block_num_to_mine == 0:
         return [], [], ""
     
-    print("simulate_mining() start")
+    print("start simulation v1:", result_file_suffix)
     start_time = datetime.now()
 
     # set node's mining difficulty
@@ -163,7 +164,7 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     broadcast_costs = []
 
     for block_num in range(block_num_to_mine):
-        if block_num % process_print_interval == 0 and block_num != 0:
+        if SHOW_PROCESS and block_num % process_print_interval == 0 and block_num != 0:
             elapsed_time = datetime.now()-start_time
             remaining_time = timedelta(seconds=elapsed_time.total_seconds() / block_num * (block_num_to_mine-block_num))
             print("block num:", format(block_num, ","), "/", format(block_num_to_mine, ","), "(", round(block_num/block_num_to_mine*100, 3), 
@@ -255,7 +256,7 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
 
     # print total results
-    print("\n\n******************** SIM V1 RESULTS ********************")
+    print("\n******************** SIM V1 RESULTS ********************")
     print("block_num_to_mine:", format(block_num_to_mine, ","))
     print("total_difficulty_prob:", total_difficulty_prob)
     print("node_num_per_block:", format(node_num_per_block, ","))
@@ -282,7 +283,6 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     broadcast_costs_stats = get_list_stats(broadcast_costs)
     print_list_stats(broadcast_costs_stats, "broadcast costs")
     print("********************************************************")
-    print("\n\n\n\n")
 
 
 
@@ -328,6 +328,8 @@ def simulate_mining_v1(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
     end_time = datetime.now()
     print("\nsimulation execution time:", end_time-start_time)
+    print("  => result file:", RESULT_DATA_PATH, file_name)
+    print("\n\n\n\n")
     
     return block_mining_times, broadcast_costs, file_name
 
@@ -415,7 +417,7 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     if block_num_to_mine == 0:
         return [], ""
     
-    print("simulate_mining() start")
+    print("start simulation v2:", result_file_suffix)
     start_time = datetime.now()
 
     # set node's mining difficulty
@@ -431,7 +433,7 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     broadcast_costs = []
     print("start block mining")
     for block_num in range(block_num_to_mine):
-        if block_num % process_print_interval == 0 and block_num != 0:
+        if SHOW_PROCESS and block_num % process_print_interval == 0 and block_num != 0:
             elapsed_time = datetime.now()-start_time
             remaining_time = timedelta(seconds=elapsed_time.total_seconds() / block_num * (block_num_to_mine-block_num))
             print("block num:", format(block_num, ","), "/", format(block_num_to_mine, ","), "(", round(block_num/block_num_to_mine*100, 3), 
@@ -458,7 +460,7 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
 
     # print final results
-    print("\n\n******************** SIM V2 RESULTS ********************")
+    print("\n******************** SIM V2 RESULTS ********************")
     print("block_num_to_mine:", format(block_num_to_mine, ","))
     print("total_difficulty_prob:", total_difficulty_prob)
     print("node_num_per_block:", format(node_num_per_block, ","))
@@ -490,7 +492,6 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
     print("")
     print("avg broadcast cost:", format(np.average(broadcast_costs), ",.3f"))
     print("********************************************************")
-    print("\n\n\n\n")
 
 
 
@@ -532,6 +533,8 @@ def simulate_mining_v2(block_num_to_mine, total_difficulty_prob, node_num_per_bl
 
     end_time = datetime.now()
     print("\nsimulation execution time:", end_time-start_time)
+    print("  => result file:", RESULT_DATA_PATH, file_name)
+    print("\n\n\n\n")
 
     return win_counts, file_name
 
@@ -672,6 +675,7 @@ if __name__ == '__main__':
     # set simulation params
     #
 
+    # SHOW_PROCESS = False
     # bntm: block num to mine
     bntm_for_eth_mining_times = 100000 # recommand: 100000
     bntm_for_th_broadcast_costs = 1000 # recommand: 1000
