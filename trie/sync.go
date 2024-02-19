@@ -19,9 +19,9 @@ package trie
 import (
 	"errors"
 	"fmt"
-	"time"
-	"strconv"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
@@ -344,14 +344,23 @@ func (s *Sync) Process(results []SyncResult) (bool, int, error) {
 // Commit flushes the data stored in the internal membatch out to persistent
 // storage, returning the number of items written and any occurred error.
 func (s *Sync) Commit(dbw ethdb.KeyValueWriter) (int, error) {
+	fmt.Printf("\t\t\t\tCommit() from membatch to Database -------------------------------\n")
+
+	var totalWriteTime time.Duration
+
 	// Dump the membatch into a database dbw
-	for i, key := range s.membatch.order {
+	for i, key := range s.membatch.order {s
+		start1 := time.Now()
 		if err := dbw.Put(key[:], s.membatch.batch[key]); err != nil {
 			return i, err
 		}
+		elapsed1 := time.Since(start1)
+		fmt.Printf("\t\t\t\tDB Write time for %s'th key %x: %s\n",i , key, elapsed1)
+		totalWriteTime += elapsed1
 		s.bloom.Add(key[:])
 	}
 	written := len(s.membatch.order) // TODO(karalabe): could an order change improve write performance?
+	fmt.Printf("\t\t\t\tTotal DB Write time for one Commit(): %s writing %s number of keys\n", totalWriteTime, written)
 
 	// Drop the membatch data and return
 	s.membatch = newSyncMemBatch()
