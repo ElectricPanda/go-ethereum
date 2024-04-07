@@ -275,6 +275,7 @@ func (p *DB) findLast() int {
 //
 // It is safe to modify the contents of the arguments after Put returns.
 func (p *DB) Put(key []byte, value []byte) error {
+	// fmt.Println("Put() 1 goleveldb/leveldb/memdb/memdb.go")
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

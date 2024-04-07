@@ -342,6 +342,7 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 				DeleteCanonicalHash(batch, first+uint64(i))
 			}
 		}
+		// fmt.Println("Maybe here 0-1")
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to delete frozen canonical blocks", "err", err)
 		}
@@ -355,6 +356,7 @@ func (f *freezer) freeze(db ethdb.KeyValueStore) {
 				}
 			}
 		}
+		// fmt.Println("Maybe here 0-2")
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to delete frozen side blocks", "err", err)
 		}

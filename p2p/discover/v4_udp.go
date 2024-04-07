@@ -795,6 +795,7 @@ func (t *UDPv4) handlePacket(from *net.UDPAddr, buf []byte) error {
 		return err
 	}
 	fromID := fromKey.id()
+	// fmt.Println("handlePacket() v4_udp.go fromID: ", fromID)
 	if err == nil {
 		err = packet.preverify(t, from, fromID, fromKey)
 	}
@@ -930,6 +931,7 @@ func (req *pongV4) preverify(t *UDPv4, from *net.UDPAddr, fromID enode.ID, fromK
 }
 
 func (req *pongV4) handle(t *UDPv4, from *net.UDPAddr, fromID enode.ID, mac []byte) {
+	// fmt.Println("handle() v4_udp.go fromID: ", fromID)
 	t.localNode.UDPEndpointStatement(from, &net.UDPAddr{IP: req.To.IP, Port: int(req.To.UDP)})
 	t.db.UpdateLastPongReceived(fromID, from.IP, time.Now())
 }

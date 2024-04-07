@@ -195,6 +195,7 @@ func (db *DB) fetchInt64(key []byte) int64 {
 
 // storeInt64 stores an integer in the given key.
 func (db *DB) storeInt64(key []byte, n int64) error {
+	// fmt.Println("storeInt64() enode/nodedb.go key: ", key)
 	blob := make([]byte, binary.MaxVarintLen64)
 	blob = blob[:binary.PutVarint(blob, n)]
 	return db.lvl.Put(key, blob, nil)
@@ -212,6 +213,7 @@ func (db *DB) fetchUint64(key []byte) uint64 {
 
 // storeUint64 stores an integer in the given key.
 func (db *DB) storeUint64(key []byte, n uint64) error {
+	// fmt.Println("storeUint64() enode/nodedb.go key: ", key)
 	blob := make([]byte, binary.MaxVarintLen64)
 	blob = blob[:binary.PutUvarint(blob, n)]
 	return db.lvl.Put(key, blob, nil)
@@ -238,6 +240,7 @@ func mustDecodeNode(id, data []byte) *Node {
 
 // UpdateNode inserts - potentially overwriting - a node into the peer database.
 func (db *DB) UpdateNode(node *Node) error {
+	// fmt.Println("UpdateNode() enode/nodedb.go key: ", nodeKey(node.ID()))
 	if node.Seq() < db.NodeSeq(node.ID()) {
 		return nil
 	}
@@ -354,6 +357,7 @@ func (db *DB) LastPingReceived(id ID, ip net.IP) time.Time {
 
 // UpdateLastPingReceived updates the last time we tried contacting a remote node.
 func (db *DB) UpdateLastPingReceived(id ID, ip net.IP, instance time.Time) error {
+	// fmt.Println("UpdateLastPingReceived() enode/nodedb.go key: ", nodeItemKey(id, ip, dbNodePing))
 	return db.storeInt64(nodeItemKey(id, ip, dbNodePing), instance.Unix())
 }
 
@@ -366,6 +370,7 @@ func (db *DB) LastPongReceived(id ID, ip net.IP) time.Time {
 
 // UpdateLastPongReceived updates the last pong time of a node.
 func (db *DB) UpdateLastPongReceived(id ID, ip net.IP, instance time.Time) error {
+	// fmt.Println("UpdateLastPongReceived() enode/nodedb.go key: ", nodeItemKey(id, ip, dbNodePong))
 	return db.storeInt64(nodeItemKey(id, ip, dbNodePong), instance.Unix())
 }
 
@@ -376,6 +381,7 @@ func (db *DB) FindFails(id ID, ip net.IP) int {
 
 // UpdateFindFails updates the number of findnode failures since bonding.
 func (db *DB) UpdateFindFails(id ID, ip net.IP, fails int) error {
+	// fmt.Println("UpdateFindFails() enode/nodedb.go key: ", nodeItemKey(id, ip, dbNodeFindFails))
 	return db.storeInt64(nodeItemKey(id, ip, dbNodeFindFails), int64(fails))
 }
 

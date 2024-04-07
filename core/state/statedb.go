@@ -695,6 +695,7 @@ func (s *StateDB) clearJournalAndRefund() {
 
 // Commit writes the state to the underlying in-memory trie database.
 func (s *StateDB) Commit(deleteEmptyObjects bool) (root common.Hash, err error) {
+	// fmt.Println("Commmit() statedb.go - - - - - - - - - - - - - - - - - - - - - -")
 	defer s.clearJournalAndRefund()
 
 	for addr := range s.journal.dirties {

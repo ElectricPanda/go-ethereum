@@ -17,6 +17,8 @@
 package rawdb
 
 import (
+	"fmt"
+
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
@@ -95,6 +97,7 @@ func (t *table) Sync() error {
 // Put inserts the given value into the database at a prefixed version of the
 // provided key.
 func (t *table) Put(key []byte, value []byte) error {
+	fmt.Println("Put() core/rawdb/table.go key: ", key)
 	return t.db.Put(append([]byte(t.prefix), key...), value)
 }
 
@@ -175,6 +178,7 @@ type tableBatch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *tableBatch) Put(key, value []byte) error {
+	fmt.Println("Put() core/rawdb/table.go key: ", key)
 	return b.batch.Put(append([]byte(b.prefix), key...), value)
 }
 
@@ -190,6 +194,7 @@ func (b *tableBatch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *tableBatch) Write() error {
+	fmt.Println("Write() core/rawdb/table.go")
 	return b.batch.Write()
 }
 

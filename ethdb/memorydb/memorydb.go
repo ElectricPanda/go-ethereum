@@ -19,6 +19,7 @@ package memorydb
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -99,6 +100,7 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (db *Database) Put(key []byte, value []byte) error {
+	fmt.Println("Put() ethdb/memorydb/memorydb.go")
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
@@ -231,6 +233,7 @@ type batch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
+	fmt.Println("Put() ethdb/memorydb/memorydb.go")
 	b.writes = append(b.writes, keyvalue{common.CopyBytes(key), common.CopyBytes(value), false})
 	b.size += len(value)
 	return nil
@@ -250,6 +253,7 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to the memory database.
 func (b *batch) Write() error {
+	fmt.Println("Write() ethdb/memorydb/memorydb.go")
 	b.db.lock.Lock()
 	defer b.db.lock.Unlock()
 

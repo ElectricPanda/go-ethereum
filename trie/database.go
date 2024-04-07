@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
 	// "encoding/hex"
 
 	"github.com/allegro/bigcache"
@@ -911,6 +912,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 				return err
 			}
 			if batch.ValueSize() > ethdb.IdealBatchSize {
+				// fmt.Println("Maybe here 2")
 				if err := batch.Write(); err != nil {
 					return err
 				}
@@ -928,6 +930,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 		}
 		// If we exceeded the ideal batch size, commit and reset
 		if batch.ValueSize() >= ethdb.IdealBatchSize {
+			// fmt.Println("Maybe here 3")
 			if err := batch.Write(); err != nil {
 				log.Error("Failed to write flush list to disk", "err", err)
 				return err
@@ -944,6 +947,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 		oldest = node.flushNext
 	}
 	// Flush out any remainder data from the last batch
+	// fmt.Println("Maybe here 4")
 	if err := batch.Write(); err != nil {
 		log.Error("Failed to write flush list to disk", "err", err)
 		return err
@@ -1005,6 +1009,7 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 		}
 		// If the batch is too large, flush to disk
 		if batch.ValueSize() > ethdb.IdealBatchSize {
+			// fmt.Println("Maybe here 5")
 			if err := batch.Write(); err != nil {
 				return err
 			}
@@ -1013,6 +1018,7 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 	}
 	// Since we're going to replay trie node writes into the clean cache, flush out
 	// any batched pre-images before continuing.
+	// fmt.Println("Maybe here 6")
 	if err := batch.Write(); err != nil {
 		return err
 	}
@@ -1027,6 +1033,7 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 		return err
 	}
 	// Trie mostly committed to disk, flush any batch leftovers
+	// fmt.Println("Maybe here 7")
 	if err := batch.Write(); err != nil {
 		log.Error("Failed to write trie to disk", "err", err)
 		return err
@@ -1118,6 +1125,7 @@ func (db *Database) commit(hash common.Hash, batch ethdb.Batch, uncacher *cleane
 	}
 	// If we've reached an optimal batch size, commit and start over
 	if batch.ValueSize() >= ethdb.IdealBatchSize {
+		// fmt.Println("Maybe here 8")
 		if err := batch.Write(); err != nil {
 			return err
 		}
@@ -1142,6 +1150,7 @@ type cleaner struct {
 // the two-phase commit is to ensure ensure data availability while moving from
 // memory to disk.
 func (c *cleaner) Put(key []byte, rlp []byte) error {
+	// fmt.Println("Put() 1 trie/database.go")
 	hash := common.BytesToHash(key)
 
 	// If the node does not exist, we're done on this path

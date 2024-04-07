@@ -16,6 +16,9 @@ import (
 )
 
 func (db *DB) writeJournal(batches []*Batch, seq uint64, sync bool) error {
+	// if(batches[0].internalLen > 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581) {
+	// 	fmt.Println("\t\t\t\twriteJournal() goleveldb/leveldb/db_write.go 시작")
+	// }
 	wr, err := db.journal.Next()
 	if err != nil {
 		return err
@@ -29,6 +32,9 @@ func (db *DB) writeJournal(batches []*Batch, seq uint64, sync bool) error {
 	if sync {
 		return db.journalWriter.Sync()
 	}
+	// if(batches[0].internalLen>60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581){
+	// 	fmt.Println("\t\t\t\twriteJournal() goleveldb/leveldb/db_write.go 끝, batches[0].internalLen: ", batches[0].internalLen)
+	// }
 	return nil
 }
 
@@ -64,6 +70,7 @@ retry:
 }
 
 func (db *DB) flush(n int) (mdb *memDB, mdbFree int, err error) {
+	// fmt.Println("flush() goleveldb/leveldb/db_write.go int n:", n)
 	delayed := false
 	slowdownTrigger := db.s.o.GetWriteL0SlowdownTrigger()
 	pauseTrigger := db.s.o.GetWriteL0PauseTrigger()
@@ -138,6 +145,7 @@ type writeMerge struct {
 }
 
 func (db *DB) unlockWrite(overflow bool, merged int, err error) {
+	// fmt.Println("unlockWrite() goleveldb/leveldb/db_write.go")
 	for i := 0; i < merged; i++ {
 		db.writeAckC <- err
 	}
@@ -152,6 +160,7 @@ func (db *DB) unlockWrite(overflow bool, merged int, err error) {
 
 // ourBatch is batch that we can modify.
 func (db *DB) writeLocked(batch, ourBatch *Batch, merge, sync bool) error {
+	// fmt.Println("writeLocked() goleveldb/leveldb/db_write.go = = = = = = = = = = = = = = = = = = = = = = = = = 시작")
 	// Try to flush memdb. This method would also trying to throttle writes
 	// if it is too fast and compaction cannot catch-up.
 	mdb, mdbFree, err := db.flush(batch.internalLen)
@@ -166,6 +175,11 @@ func (db *DB) writeLocked(batch, ourBatch *Batch, merge, sync bool) error {
 		merged   int
 		batches  = []*Batch{batch}
 	)
+
+	// if (batches[0].internalLen > 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581) {
+	// 	//trie node 인 것만 확인해서 프린트하게: bytelength 32byte, stringlength면 64자
+	// 	fmt.Println("\t\t\t\twriteLocked() goleveldb/leveldb/db_write.go = = = = = = = = = = = = = = = 시작")
+	// }
 
 	if merge {
 		// Merge limit.
@@ -228,10 +242,20 @@ func (db *DB) writeLocked(batch, ourBatch *Batch, merge, sync bool) error {
 	seq := db.seq + 1
 
 	// Write journal.
+
+	// if (batches[0].internalLen > 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581) {
+	// 	fmt.Println("\t\t\t\twriteLocked() 에서 writeJournal() 호출 직전")
+	// }
+
 	if err := db.writeJournal(batches, seq, sync); err != nil {
 		db.unlockWrite(overflow, merged, err)
 		return err
 	}
+	
+	// if (batches[0].internalLen > 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581 ) {
+	// 	fmt.Println("\t\t\t\twriteLocked() 에서 writeJournal() 은 끝남")
+	// }
+
 
 	// Put batches.
 	for _, batch := range batches {
@@ -240,6 +264,10 @@ func (db *DB) writeLocked(batch, ourBatch *Batch, merge, sync bool) error {
 		}
 		seq += uint64(batch.Len())
 	}
+
+	// if (batches[0].internalLen > 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581) {
+	// 	fmt.Println("\t\t\t\twriteLocked() 에서 putMem 직후")
+	// }
 
 	// Incr seq number.
 	db.addSeq(uint64(batchesLen(batches)))
@@ -250,6 +278,10 @@ func (db *DB) writeLocked(batch, ourBatch *Batch, merge, sync bool) error {
 	}
 
 	db.unlockWrite(overflow, merged, nil)
+
+	// if (batches[0].internalLen > 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581 ) {
+	// 	fmt.Println("\t\t\t\twriteLocked() goleveldb/leveldb/db_write.go = = = = = = = = = = 끝")
+	// }
 	return nil
 }
 
@@ -261,6 +293,10 @@ func (db *DB) writeLocked(batch, ourBatch *Batch, merge, sync bool) error {
 // It is safe to modify the contents of the arguments after Write returns but
 // not before. Write will not modify content of the batch.
 func (db *DB) Write(batch *Batch, wo *opt.WriteOptions) error {
+	// if(unsafe.Sizeof(batch) > 8){
+	// if batch != nil && batch.Len() > 0 {
+	// 	fmt.Println("\t\t\t\tWrite() goleveldb/leveldb/db_write.go batch: ", batch, "size: ", unsafe.Sizeof(batch))
+	// }
 	if err := db.ok(); err != nil || batch == nil || batch.Len() == 0 {
 		return err
 	}
@@ -318,6 +354,7 @@ func (db *DB) Write(batch *Batch, wo *opt.WriteOptions) error {
 }
 
 func (db *DB) putRec(kt keyType, key, value []byte, wo *opt.WriteOptions) error {
+	// fmt.Println("putRec() goleveldb/leveldb/db_write.go, key: ", key)
 	if err := db.ok(); err != nil {
 		return err
 	}
@@ -369,6 +406,7 @@ func (db *DB) putRec(kt keyType, key, value []byte, wo *opt.WriteOptions) error 
 // It is safe to modify the contents of the arguments after Put returns but not
 // before.
 func (db *DB) Put(key, value []byte, wo *opt.WriteOptions) error {
+	// fmt.Println("Put() goleveldb/leveldb/db_write.go key: ", key)
 	return db.putRec(keyTypeVal, key, value, wo)
 }
 
@@ -398,6 +436,7 @@ func isMemOverlaps(icmp *iComparer, mem *memdb.DB, min, max []byte) bool {
 // And a nil Range.Limit is treated as a key after all keys in the DB.
 // Therefore if both is nil then it will compact entire DB.
 func (db *DB) CompactRange(r util.Range) error {
+	// fmt.Println("CompactRange() goleveldb/leveldb/db_write.go")
 	if err := db.ok(); err != nil {
 		return err
 	}

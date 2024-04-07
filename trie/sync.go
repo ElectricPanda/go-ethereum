@@ -59,32 +59,32 @@ func logQueuePushNewLine(){
 	// f.Close()
 }
 
-func logQueuePop(input string, priority int, queueSize int, requestSize int, time time.Duration){
-	return
-	f, err := os.OpenFile(ReceiverPopFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println("ERR:", err)
-	}
+// func logQueuePop(input string, priority int, queueSize int, requestSize int, time time.Duration){
+// 	return
+// 	f, err := os.OpenFile(ReceiverPopFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// 	if err != nil {
+// 		fmt.Println("ERR:", err)
+// 	}
 
-	HashData := "POPPED Hash: " + input
-	PriorityData := "Priority: " + strconv.Itoa(priority)
-	queueSizeData := "Queue Size: " + strconv.Itoa(queueSize)
-	requestSizeData := "Request Size: " + strconv.Itoa(requestSize)
-	timeData := "Took time: " + strconv.Itoa(int(time.Nanoseconds()))
+// 	HashData := "POPPED Hash: " + input
+// 	PriorityData := "Priority: " + strconv.Itoa(priority)
+// 	queueSizeData := "Queue Size: " + strconv.Itoa(queueSize)
+// 	requestSizeData := "Request Size: " + strconv.Itoa(requestSize)
+// 	timeData := "Took time: " + strconv.Itoa(int(time.Nanoseconds()))
 
-	fmt.Fprintln(f, HashData, PriorityData, queueSizeData, requestSizeData, timeData)
-	f.Close()
-}
+// 	fmt.Fprintln(f, HashData, PriorityData, queueSizeData, requestSizeData, timeData)
+// 	f.Close()
+// }
 
-func logQueuePopNewLine(){
-	return
-	f, err := os.OpenFile(ReceiverPopFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println("ERR:", err)
-	}
-	fmt.Fprintln(f,"")
-	f.Close()
-}
+// func logQueuePopNewLine(){
+// 	return
+// 	f, err := os.OpenFile(ReceiverPopFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// 	if err != nil {
+// 		fmt.Println("ERR:", err)
+// 	}
+// 	fmt.Fprintln(f,"")
+// 	f.Close()
+// }
 
 // overhead of correctly prefixing for fake IMPT data (nanoseconds)
 var TotalPrefixingOverhead uint64 = 0
@@ -241,22 +241,30 @@ func (s *Sync) AddRawEntry(hash common.Hash, depth int, parent common.Hash) {
 // Missing retrieves the known missing nodes from the trie for retrieval.
 func (s *Sync) Missing(max int) []common.Hash {
 	// fmt.Println("Missing() max: ", max)
+
+	logFileName := "/data/minseokk1m_logs/final_ENHANCE/receiver_ENHANCE_queue_pop.log"
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer file.Close()
+
 	var requests []common.Hash
 	iterationCount := 0
 	for !s.queue.Empty() && (max == 0 || len(requests) < max) {
 		iterationCount++
-		fmt.Printf("\t\tQUEUE POP #: %d -------------------------------------------\n", iterationCount)
 		start2 := time.Now()
 		// var temp = s.queue.PopItem().(common.Hash)
 		var tempValue, tempPriority = s.queue.Pop()
 		var temp = tempValue.(common.Hash)
 		elapsed2 := time.Since(start2)
-		fmt.Printf("\t\t\tQUEUE POP Hash: %s\n", temp.Hex())
-		fmt.Printf("\t\t\tQUEUE POP Priority: %d\n", tempPriority)
-		fmt.Printf("\t\t\tQUEUE POP TIME: %s\n", elapsed2)
-		fmt.Printf("\t\t\tQUEUE POP SIZE: %d\n", s.queue.Size())
+		fmt.Fprintf(file, "\t\tQUEUE POP #: %d -------------------------------------------\n", iterationCount)
+		fmt.Fprintf(file, "\t\t\tQUEUE POP Hash: %s\n", temp.Hex())
+		fmt.Fprintf(file, "\t\t\tQUEUE POP Priority: %d\n", tempPriority)
+		fmt.Fprintf(file, "\t\t\tQUEUE POP TIME: %s\n", elapsed2)
+		fmt.Fprintf(file, "\t\t\tQUEUE POP SIZE: %d\n", s.queue.Size())
 		requests = append(requests, temp)
-		logQueuePop(temp.Hex(), int(tempPriority), s.queue.Size(), len(s.requests), elapsed2)
+		// logQueuePop(temp.Hex(), int(tempPriority), s.queue.Size(), len(s.requests), elapsed2)
 	}
 
 	// code to send node requests in strictly descending order(a.k.a. benchmark) (mskim)
@@ -274,7 +282,7 @@ func (s *Sync) Missing(max int) []common.Hash {
 	// 	logQueuePop(common.DescendingOrderNodeHash[common.DescendingOrderNodeHashPopIndex], 888888888, 888888888, len(s.requests), 888888888)
 	// }
 
-	logQueuePopNewLine()
+	// logQueuePopNewLine()
 	return requests
 }
 
@@ -282,6 +290,13 @@ func (s *Sync) Missing(max int) []common.Hash {
 // was committed to the database and also the index of an entry if processing of
 // it failed.
 func (s *Sync) Process(results []SyncResult) (bool, int, error) {
+
+	logFileName := "/data/minseokk1m_logs/final_ENHANCE/receiver_ENHANCE_queue_push.log"
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer file.Close()
 	// var k = 0;
 	// fmt.Println("Process() 인자로 results 받았고 그 길이는: ", len(results))
 	committed := false
@@ -333,10 +348,10 @@ func (s *Sync) Process(results []SyncResult) (bool, int, error) {
 		// fmt.Println("요청하고자하는 child node의 개수: ", len(requests))
 		for i, child := range requests {
 			// fmt.Println("Child Number: ", i)
-			fmt.Printf("\t\tCHILD HASH data of the Node, Child Number#: %d ------------------------------- \n", i)
+			fmt.Fprintf(file, "\t\tCHILD HASH data of the Node, Child Number#: %d ------------------------------- \n", i)
 			s.schedule(child)
 		}
-		logQueuePushNewLine()
+		// logQueuePushNewLine()
 	}
 	return committed, 0, nil
 }
@@ -344,23 +359,24 @@ func (s *Sync) Process(results []SyncResult) (bool, int, error) {
 // Commit flushes the data stored in the internal membatch out to persistent
 // storage, returning the number of items written and any occurred error.
 func (s *Sync) Commit(dbw ethdb.KeyValueWriter) (int, error) {
-	fmt.Printf("\t\t\t\tCommit() from membatch to Database -------------------------------\n")
+	// fmt.Printf("\t\t\t\tCommit() from membatch to StateDB -------------------------------\n")
 
-	var totalWriteTime time.Duration
+	// var totalWriteTime time.Duration
 
 	// Dump the membatch into a database dbw
-	for i, key := range s.membatch.order {s
-		start1 := time.Now()
+	for i, key := range s.membatch.order {
+		// start1 := time.Now()
+		// fmt.Println("\t\t\t\tCommit() key[:]: ", key[:])
 		if err := dbw.Put(key[:], s.membatch.batch[key]); err != nil {
 			return i, err
 		}
-		elapsed1 := time.Since(start1)
-		fmt.Printf("\t\t\t\tDB Write time for %s'th key %x: %s\n",i , key, elapsed1)
-		totalWriteTime += elapsed1
+		// elapsed1 := time.Since(start1)
+		// fmt.Printf("\t\t\t\tStateDB Write time for %s'th key %x: %s\n",i , key, elapsed1)
+		// totalWriteTime += elapsed1
 		s.bloom.Add(key[:])
 	}
 	written := len(s.membatch.order) // TODO(karalabe): could an order change improve write performance?
-	fmt.Printf("\t\t\t\tTotal DB Write time for one Commit(): %s writing %s number of keys\n", totalWriteTime, written)
+	// fmt.Printf("\t\t\t\tTotal StateDB write time for one Commit(): %s writing %s number of keys\n", totalWriteTime, written)
 
 	// Drop the membatch data and return
 	s.membatch = newSyncMemBatch()
@@ -380,6 +396,15 @@ func (s *Sync) schedule(req *request) {
 	// If we're already requesting this node, add a new reference and stop
 	// fmt.Println("schedule()")
 	// fmt.Println("schedule(): ", req.hash.Hex())
+
+	logFileName := "/data/minseokk1m_logs/final_ENHANCE/receiver_ENHANCE_queue_push.log"
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer file.Close()
+
+
 	if old, ok := s.requests[req.hash]; ok {
 		fmt.Println("inside old check")
 		// os.Exit(1)
@@ -389,25 +414,24 @@ func (s *Sync) schedule(req *request) {
 	prefixLen := PrefixLength*2 +2// = blockNumberLen + "0x"
 
 	// Schedule the request for future retrieval
-	// TH/GETH (when checking benchmark, we must comment out this part)
+	// (1) TH/GETH (when checking benchmark, we must comment out this part)
 	// priority := int64(req.depth)
 
-
-    // ENHANCED (when checking benchmark, we must comment out this part)
-	// Prefix := (req.hash.Hex())[0:10]
-	// PrefixInt64, _ := strconv.ParseInt(Prefix, 0, 64)
-	// priority := PrefixInt64
-
-	// Depth || blockNum (concat)
-	hexStringDepth := strconv.FormatInt(int64(req.depth), 16)
-	if len(hexStringDepth) < 2 {
-		hexStringDepth = "0" + hexStringDepth
-	}
-	Prefix := "0x"+hexStringDepth + (req.hash.Hex())[2:10]
+    // (2) ENHANCED (when checking benchmark, we must comment out this part)
+	Prefix := (req.hash.Hex())[0:10]
 	PrefixInt64, _ := strconv.ParseInt(Prefix, 0, 64)
 	priority := PrefixInt64
 
-	// BlockNum || depth (concat)
+	// (3) Depth || blockNum (concat)
+	// hexStringDepth := strconv.FormatInt(int64(req.depth), 16)
+	// if len(hexStringDepth) < 2 {
+	// 	hexStringDepth = "0" + hexStringDepth
+	// }
+	// Prefix := "0x"+hexStringDepth + (req.hash.Hex())[2:10]
+	// PrefixInt64, _ := strconv.ParseInt(Prefix, 0, 64)
+	// priority := PrefixInt64
+
+	// (4) BlockNum || depth (concat)
 	// hexStringDepth := strconv.FormatInt(int64(req.depth), 16)
 	// if len(hexStringDepth) < 2 {
 	// 	hexStringDepth = "0" + hexStringDepth
@@ -416,14 +440,14 @@ func (s *Sync) schedule(req *request) {
 	// PrefixInt64, _ := strconv.ParseInt(Prefix, 0, 64)
 	// priority := PrefixInt64
 
-	fmt.Printf("\t\t\tQUEUE PUSH Hash: %s\n", req.hash.Hex())
-	fmt.Printf("\t\t\tQUEUE PUSH Priority: %d\n", priority)
+	fmt.Fprintf(file, "\t\t\tQUEUE PUSH Hash: %s\n", req.hash.Hex())
+	fmt.Fprintf(file, "\t\t\tQUEUE PUSH Priority: %d\n", priority)
 	start1 := time.Now()
 	s.queue.Push(req.hash,priority)
 	elapsed1 := time.Since(start1)
-	fmt.Printf("\t\t\tQUEUE PUSH TIME: %s\n", elapsed1)
+	fmt.Fprintf(file, "\t\t\tQUEUE PUSH TIME: %s\n", elapsed1)
 	// fmt.Println("&&&&&&&&&&&&&&&&: childnode를 queue 에 넣는 데 걸린 시간 (s.queue.Push time): ", elapsed1)
-	fmt.Printf("\t\t\tQUEUE PUSH SIZE: %d \n", s.queue.Size())
+	fmt.Fprintf(file, "\t\t\tQUEUE PUSH SIZE: %d\n", s.queue.Size())
 	// fmt.Println("Push() 후 len(s.queue): ", s.queue.Size())
 	// 싱크가 처음부터 다시 되었는지 탐지하는 코드 (mskim)
 	if(req.hash.Hex() == "0x007a12008815e97fc0b9d433fffe823e25db538c37685cb68a98c83bc5f2658d"){
@@ -438,7 +462,7 @@ func (s *Sync) schedule(req *request) {
 	// fmt.Println("Push() 후 length of s.requests BEFORE: ", len(s.requests))
 	s.requests[req.hash] = req
 	// fmt.Println("Push() 후 length of s.requests AFTER: ", len(s.requests))
-	logQueuePush(req.hash.Hex(), int(priority), s.queue.Size(), len(s.requests), elapsed1)
+	// logQueuePush(req.hash.Hex(), int(priority), s.queue.Size(), len(s.requests), elapsed1)
 
 	// insert hash info for syncing with fake TH data (jmlee)
 	// startTime := time.Now()
@@ -523,19 +547,27 @@ func (s *Sync) children(req *request, object node) ([]*request, error) {
 // of the referencing parent requests complete due to this commit, they are also
 // committed themselves.
 func (s *Sync) commit(req *request) (err error) {
-	fmt.Printf("\t\tThis Node has no CHILD, hence directly entering commit() -------------------------------\n")
+
+	logFileName := "/data/minseokk1m_logs/final_ENHANCE/receiver_ENHANCE_queue_push.log"
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer file.Close()
+
+	fmt.Fprintf(file, "\t\tThis Node has no CHILD, hence directly entering commit() -------------------------------\n")
 	// Write the node content to the membatch
 	s.membatch.batch[req.hash] = req.data
 	s.membatch.order = append(s.membatch.order, req.hash)
 
 	delete(s.requests, req.hash)
-	fmt.Printf("\t\t\tCOMMIT HASH: %s\n", (req.hash).Hex())
-	fmt.Printf("\t\t\tCOMMIT HASH DEPTH: %d\n", int64(req.depth) )
-	fmt.Printf("\t\t\tCOMMIT REQUEST SIZE: %d\n", len(s.requests))
+	fmt.Fprintf(file, "\t\t\tCOMMIT HASH: %s\n", (req.hash).Hex())
+	fmt.Fprintf(file, "\t\t\tCOMMIT HASH DEPTH: %d\n", int64(req.depth))
+	fmt.Fprintf(file, "\t\t\tCOMMIT REQUEST SIZE: %d\n", len(s.requests))
 	// fmt.Println("***AFTER: commit(), length of s.requests: ", len(s.requests))
 
 	common.TotalCommit++
-	fmt.Printf("\t\t\tCOMMIT ACCUMULATE COUNT: %d\n", common.TotalCommit)
+	fmt.Fprintf(file, "\t\t\tCOMMIT ACCUMULATE COUNT: %d\n", common.TotalCommit)
 
 	// fmt.Println("Total commit(Leaf node)횟수: ", common.TotalCommit, "Queue depth: ", int64(req.depth))
 
@@ -553,7 +585,7 @@ func (s *Sync) commit(req *request) (err error) {
 	for _, parent := range req.parents {
 		parent.deps--
 		if parent.deps == 0 {
-			fmt.Println("\t\t자녀가 commit됨으로 인해 parent가 더이상 reference하는게 없으면, parent도 commit 시킨다")
+			fmt.Fprintf(file, "\t\t자녀가 commit됨으로 인해 parent가 더이상 reference하는게 없으면, parent도 commit 시킨다\n")
 			if err := s.commit(parent); err != nil {
 				return err
 			}

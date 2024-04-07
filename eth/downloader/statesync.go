@@ -19,6 +19,7 @@ package downloader
 import (
 	"fmt"
 	"hash"
+	"os"
 	"sync"
 	"time"
 
@@ -334,7 +335,11 @@ func (s *stateSync) loop() (err error) {
 	peerSub := s.d.peers.SubscribeNewPeers(newPeer)
 	defer peerSub.Unsubscribe()
 	defer func() {
+		// fmt.Println("commit() call 1 in statesync.go")
+		start := time.Now()
 		cerr := s.commit(true)
+		timeTook := time.Since(start)
+		fmt.Println("Time took for commit(): ", timeTook)
 		if err == nil {
 			err = cerr
 		}
@@ -342,37 +347,41 @@ func (s *stateSync) loop() (err error) {
 
 	// Keep assigning new tasks until the sync completes or aborts
 	for s.sched.Pending() > 0 {
+		// fmt.Println("commit() call 2 in statesync.go")
+		start := time.Now()
 		if err = s.commit(false); err != nil {
-			fmt.Println("loop()이 에러를 내뱉는 케이스1")
+			// fmt.Println("loop()이 에러를 내뱉는 케이스1")
 			return err
 		}
+		timeTook := time.Since(start)
+		fmt.Println("Time took for commit(): ", timeTook)
 		s.assignTasks()
 		// fmt.Println("assignTasks()는 마무리되어서 밖으로 나왔다")
 		// Tasks assigned, wait for something to happen
 		select {
 		case <-newPeer:
-			fmt.Println("**************** loop() 의 <-newPeer: *******************")
+			// fmt.Println("**************** loop() 의 <-newPeer: *******************")
 			// New peer arrived, try to assign it download tasks
 
 		case <-s.cancel:
-			fmt.Println("**************** loop() 의 case <-s.cancel: *******************")
+			// fmt.Println("**************** loop() 의 case <-s.cancel: *******************")
 			return errCancelStateFetch
 
 		case <-s.d.cancelCh:
-			fmt.Println("**************** loop() 의 case <-s.d.cancelCh: *******************")
+			// fmt.Println("**************** loop() 의 case <-s.d.cancelCh: *******************")
 			return errCanceled
 
 		case req := <-s.deliver:
 			// fmt.Println("req := <-s.deliver")
 			// Sender로부터 req 가 꽉차서 도착한 곳이 여기인거지
 			// fmt.Println("원래 지금 내가 보던 파이프라인에서 req.response는?!: ")
-			fmt.Println("RESPONSE SENT FROM SENDER, length:", len(req.response))
+			// fmt.Println("RESPONSE SENT FROM SENDER, length:", len(req.response))
 			// Response, disconnect or timeout triggered, drop the peer if stalling
 			log.Trace("Received node data response", "peer", req.peer.id, "count", len(req.response), "dropped", req.dropped, "timeout", !req.dropped && req.timedOut())
 			if len(req.items) <= 2 && !req.dropped && req.timedOut() {
 				// 2 items are the minimum requested, if even that times out, we've no use of
 				// this peer at the moment.
-				fmt.Println("len(req.items): ", len(req.items))
+				// fmt.Println("len(req.items): ", len(req.items))
 				log.Warn("Stalling state sync, dropping peer", "peer", req.peer.id)
 				if s.d.dropPeer == nil {
 					// The dropPeer method is nil when `--copydb` is used for a local copy.
@@ -388,7 +397,7 @@ func (s *stateSync) loop() (err error) {
 
 					if master {
 						s.d.cancel()
-						fmt.Println("loop()이 에러를 내뱉는 케이스2, 타임아웃에러")
+						// fmt.Println("loop()이 에러를 내뱉는 케이스2, 타임아웃에러")
 						return errTimeout
 					}
 				}
@@ -396,32 +405,43 @@ func (s *stateSync) loop() (err error) {
 			// Process all the received blobs and check for stale delivery
 			delivered, err := s.process(req)
 			if err != nil {
-				log.Warn("Node data write error", "err", err)
-				fmt.Println("loop()이 에러를 내뱉는 케이스3")
+				// log.Warn("Node data write error", "err", err)
+				// fmt.Println("loop()이 에러를 내뱉는 케이스3")
 				return err
 			}
 			req.peer.SetNodeDataIdle(delivered)
 		}
 	}
-	fmt.Println("**************** loop() 의 return nil *******************")
+	// fmt.Println("**************** loop() 의 return nil *******************")
 	return nil
 }
 
 func (s *stateSync) commit(force bool) error {
+	fmt.Println("commit() statesync.go 의 시작부분 - - - - - - - - - - - - - - - - - - - - - - ")
 	if !force && s.bytesUncommitted < ethdb.IdealBatchSize {
 		return nil
 	}
 	start := time.Now()
 	b := s.d.stateDB.NewBatch()
+	// fmt.Println("\t\t\tPhase 1 - Commit: membatch -> dbw/statedb interface")
 	if written, err := s.sched.Commit(b); written == 0 || err != nil {
 		return err
 	}
+	// fmt.Println("\t\t\tPhase 2 - Write: statedb -> actual db")
+	start1 := time.Now()
 	if err := b.Write(); err != nil {
 		return fmt.Errorf("DB write error: %v", err)
 	}
+	timeTook1 := time.Since(start1)
+	common.AccumulatedLevelDBInfo.WriteTimes = append(common.AccumulatedLevelDBInfo.WriteTimes, timeTook1)
+	// fmt.Println("Write() 부른 작업은 끝남")
+
+	common.PrintAccumulatedLevelDBInfo()
+
 	s.updateStats(s.numUncommitted, 0, 0, time.Since(start))
 	s.numUncommitted = 0
 	s.bytesUncommitted = 0
+	fmt.Println("commit() statesync.go 의 끝부분 - - - - - - - - - - - - - - - - - - - - - - ")
 	return nil
 }
 
@@ -438,7 +458,7 @@ func (s *stateSync) assignTasks() {
 		cap := p.NodeDataCapacity(s.d.requestRTT())
 		// fmt.Println("cap: ",cap)
 		req := &stateReq{peer: p, timeout: s.d.requestTTL()}
-		fmt.Println("*************** req의 timeout 설정 직후 값*************: ", req.timeout)
+		// fmt.Println("*************** req의 timeout 설정 직후 값*************: ", req.timeout)
 		// fmt.Println("fillTasks()를 부르기 전임!!!")
 		// fmt.Println("fillTasks()를 부르기 전의 req: ", req)
 		// fmt.Println("fillTasks()를 부르기 전의 req.response: ", req.response)
@@ -470,6 +490,14 @@ func (s *stateSync) assignTasks() {
 // fillTasks fills the given request object with a maximum of n state download
 // tasks to send to the remote peer.
 func (s *stateSync) fillTasks(n int, req *stateReq) {
+
+	logFileName := "/data/minseokk1m_logs/final_ENHANCE/receiver_ENHANCE_queue_pop.log"
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// log.Crit("Failed to open log file", "error", err)
+	}
+	defer file.Close()
+
 	// fmt.Println("fillTasks()")
 	// fmt.Println("input으로 들어온 n: ", n)
 	// fmt.Println("len()")
@@ -480,7 +508,11 @@ func (s *stateSync) fillTasks(n int, req *stateReq) {
 		// fmt.Println("n:", n)
 		// fmt.Println("len(s.tasks): ", len(s.tasks))
 		// fmt.Println("n-len(s.tasks)", n-len(s.tasks))
-		fmt.Printf("\t\tTasks to fill for request to the Sender: %d ======================================================= \n", n-len(s.tasks))
+		_, err := fmt.Fprintf(file, "\tTasks to fill for request to the Sender: %d ======================================================= \n", n-len(s.tasks))
+		if err != nil {
+			// log.Crit("Failed to write to log file", "error", err)
+			return
+		}
 		new := s.sched.Missing(n - len(s.tasks))
 		for _, hash := range new {
 			s.tasks[hash] = &stateTask{make(map[string]struct{})}
@@ -521,6 +553,15 @@ func (s *stateSync) fillTasks(n int, req *stateReq) {
 // delivered. Returns whether the peer actually managed to deliver anything of
 // value, and any error that occurred.
 func (s *stateSync) process(req *stateReq) (int, error) {
+
+	logFileName := "/data/minseokk1m_logs/final_ENHANCE/receiver_ENHANCE_queue_push.log"
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer file.Close()
+
+
 	// fmt.Println("process")
 	// Collect processing stats and update progress if valid data was received
 	duplicate, unexpected, successful := 0, 0, 0
@@ -533,7 +574,7 @@ func (s *stateSync) process(req *stateReq) (int, error) {
 
 	// Iterate over all the delivered data and inject one-by-one into the trie
 	for i, blob := range req.response {
-		fmt.Printf("\tNode Data Retrieved from Sender #: %d =========================================\n",i)
+		fmt.Fprintf(file, "\tNode Data Retrieved from Sender #: %d =========================================\n",i)
 		_, hash, err := s.processNodeData(blob) 
 		switch err {
 		case nil:
@@ -551,9 +592,9 @@ func (s *stateSync) process(req *stateReq) (int, error) {
 		}
 		delete(req.tasks, hash)
 	}
-	logQueuePushNewLine()
-	logQueuePushNewLine()
-	logQueuePushNewLine()
+	// logQueuePushNewLine()
+	// logQueuePushNewLine()
+	// logQueuePushNewLine()
 
 	// Put unfulfilled tasks back into the retry queue
 	npeers := s.d.peers.Len()

@@ -86,6 +86,9 @@ func (b *Batch) grow(n int) {
 }
 
 func (b *Batch) appendRec(kt keyType, key, value []byte) {
+	// if ( 32 ==len(key) ) {
+	// 	fmt.Println("\t\t\t\tappendRec() goleveldb/leveldb/batch.go, key: ", key)
+	// }
 	n := 1 + binary.MaxVarintLen32 + len(key)
 	if kt == keyTypeVal {
 		n += binary.MaxVarintLen32 + len(value)
@@ -115,6 +118,9 @@ func (b *Batch) appendRec(kt keyType, key, value []byte) {
 // It is safe to modify the contents of the argument after Put returns but not
 // before.
 func (b *Batch) Put(key, value []byte) {
+	// if ( 32 ==len(key) ) {
+	// 	fmt.Println("\t\t\t\tPut() goleveldb/leveldb/batch.go, key: ", key)
+	// }
 	b.appendRec(keyTypeVal, key, value)
 }
 
@@ -342,10 +348,16 @@ func batchesLen(batches []*Batch) int {
 }
 
 func writeBatchesWithHeader(wr io.Writer, batches []*Batch, seq uint64) error {
+	// if(batches[0].internalLen> 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581){
+	// 	fmt.Println("\t\t\t\twriteBatchesWithHeader() goleveldb/leveldb/batch.go batchesLen(batches): ", batchesLen(batches), "batches[0].internalLen: ", batches[0].internalLen)
+	// }
 	if _, err := wr.Write(encodeBatchHeader(nil, seq, batchesLen(batches))); err != nil {
 		return err
 	}
 	for _, batch := range batches {
+		// if (batches[0].internalLen> 60 && batches[0].internalLen !=583 && batches[0].internalLen !=582 && batches[0].internalLen !=581) {
+		// 	fmt.Println("\t\t\t\twriteBatchesWithHeader batch.internalLen:  ", batch.internalLen , "batch.data: ", batch.data)
+		// }
 		if _, err := wr.Write(batch.data); err != nil {
 			return err
 		}

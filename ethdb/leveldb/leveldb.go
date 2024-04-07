@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
+//go:build !js
 // +build !js
 
 // Package leveldb implements the key-value database layer based on LevelDB.
@@ -157,6 +158,7 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (db *Database) Put(key []byte, value []byte) error {
+	// fmt.Println("Put() ethdb/leveldb/leveldb.go key: ", key)
 	return db.db.Put(key, value, nil)
 }
 
@@ -400,6 +402,7 @@ type batch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
+	// fmt.Println("@@@@ Put()2 ethdb/leveldb/leveldb.go")
 	b.b.Put(key, value)
 	b.size += len(value)
 	return nil
@@ -417,8 +420,35 @@ func (b *batch) ValueSize() int {
 	return b.size
 }
 
-// Write flushes any accumulated data to disk.
+// Write flushes any accumulated data to disk. // 여기서 flush란 이더리움의 abstraction layer인 statedb에서 leveldb로 보낸다는 뜻일 뿐임. memtable에서 SST file로 보낸다는 뜻 아님.
 func (b *batch) Write() error {
+	// if(b.size != 0){
+	// 	fmt.Println("\t\t\t\tWrite() ethdb/leveldb/leveldb.go, b.b ", b.b)
+	// }
+	//변수로 저장하고, 그다음에 실험 끝나면 변수를 한번에 파일로 저장하도록 해야 엄밀한 측정임. 이렇게 중간에 fmt.Println() 하면 정확도가 떨어짐
+	//이부분이 몇번이나 불렸고 얼마나 걸렸는지 (batch index의 렝스도 확인하고 싶음. batch 별로 batch 안에 있는 아이템이 몇개 있는지)
+	//이게 꼭 phase 2에서만 불리지 않을수도 있음 Commit() 단계에서 내부적으로 flush 하면서도 불릴 수도 있음 확인해야 함
+
+	 // Define a list of properties you want to retrieve and print
+	 properties := []string{"leveldb.stats", "leveldb.compcount", "leveldb.iostats"}
+
+	// Accumulate LevelDB information instead of printing
+	for _, prop := range properties {
+    if value, err := b.db.GetProperty(prop); err == nil {
+        switch prop {
+        case "leveldb.stats":
+            common.AccumulatedLevelDBInfo.Stats = append(common.AccumulatedLevelDBInfo.Stats, value)
+        case "leveldb.compcount":
+            common.AccumulatedLevelDBInfo.CompCount = append(common.AccumulatedLevelDBInfo.CompCount, value)
+        case "leveldb.iostats":
+            common.AccumulatedLevelDBInfo.IOStats = append(common.AccumulatedLevelDBInfo.IOStats, value)
+        }
+    } else {
+        // Handle or log the error as needed. Consider appending an error indicator or message.
+        fmt.Println("Error retrieving", prop+":", err) // Consider replacing with a more suitable error handling approach.
+    }
+}
+
 	return b.db.Write(b.b, nil)
 }
 
@@ -441,6 +471,7 @@ type replayer struct {
 
 // Put inserts the given value into the key-value data store.
 func (r *replayer) Put(key, value []byte) {
+	// fmt.Println("@@@@ Put()3 ethdb/leveldb/leveldb.go")
 	// If the replay already failed, stop executing ops
 	if r.failure != nil {
 		return

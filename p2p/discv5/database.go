@@ -172,12 +172,14 @@ func (db *nodeDB) fetchInt64(key []byte) int64 {
 // storeInt64 update a specific database entry to the current time instance as a
 // unix timestamp.
 func (db *nodeDB) storeInt64(key []byte, n int64) error {
+	fmt.Println("storeInt64() database.go key: ", key)
 	blob := make([]byte, binary.MaxVarintLen64)
 	blob = blob[:binary.PutVarint(blob, n)]
 	return db.lvl.Put(key, blob, nil)
 }
 
 func (db *nodeDB) storeRLP(key []byte, val interface{}) error {
+	fmt.Println("storeRLP() database.go key: ", key)
 	blob, err := rlp.EncodeToBytes(val)
 	if err != nil {
 		return err
@@ -380,6 +382,7 @@ func (db *nodeDB) fetchTopicRegTickets(id NodeID) (issued, used uint32) {
 
 func (db *nodeDB) updateTopicRegTickets(id NodeID, issued, used uint32) error {
 	key := makeKey(id, nodeDBTopicRegTickets)
+	fmt.Println("updateTopicRegTickets() database.go key: ", key)
 	blob := make([]byte, 8)
 	binary.BigEndian.PutUint32(blob[0:4], issued)
 	binary.BigEndian.PutUint32(blob[4:8], used)

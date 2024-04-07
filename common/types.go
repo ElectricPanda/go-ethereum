@@ -21,8 +21,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"math/rand"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -86,6 +88,8 @@ var (
 	ReceivedBatchNumber = 0
 	ReceiveStartTime time.Time = time.Time{}
 
+	AccumulatedLevelDBInfo LevelDBInfo
+
 	DescendingOrderNodeHash []string
 	DescendingOrderNodeHashPopIndex = 1
 
@@ -126,6 +130,15 @@ type LevelSSTable struct {
 	CacheMiss bool
 }
 
+// I use this struct within receiver's write logic
+// LevelDBInfo stores information about LevelDB's operational statistics.
+type LevelDBInfo struct {
+    Stats       []string
+    CompCount   []string
+    IOStats     []string
+	WriteTimes  []time.Duration // Adding a slice to store write times
+}
+
 // WriteToMap modifies hashLevelSSTablePairs to associate the given key with the given level and SSTable number.
 func WriteToMap(key string, level int, sstableNum int64) {
     mux.Lock()
@@ -154,6 +167,42 @@ func ReadFromMap(key string) LevelSSTable {
     value, _ := hashLevelSSTablePairs[key]
     return value
 }
+
+
+func PrintAccumulatedLevelDBInfo() {
+	// Define the log file name. You can also use timestamps or other identifiers to create unique filenames.
+	logFileName := "/data/minseokk1m_logs/final_ENHANCE/receiver_ENHANCE_leveldb_write_info.log"
+
+	// Open or create the log file. Use os.O_APPEND and os.O_CREATE to append to existing file or create a new one.
+	// os.O_WRONLY is used because we only want to write to the file.
+	file, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer file.Close()
+
+	// Create a logger that writes to the file
+	logger := log.New(file, "", log.LstdFlags) // Using log.LstdFlags to prefix each log entry with a timestamp
+
+	logger.Println("LEVELDB WRITE INFO(start) >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+
+	// Print the most recent information from LevelDBInfo to the log file
+	if len(AccumulatedLevelDBInfo.Stats) > 0 {
+		logger.Println("Latest Stat:", AccumulatedLevelDBInfo.Stats[len(AccumulatedLevelDBInfo.Stats)-1])
+	}
+	if len(AccumulatedLevelDBInfo.CompCount) > 0 {
+		logger.Println("Latest CompCount:", AccumulatedLevelDBInfo.CompCount[len(AccumulatedLevelDBInfo.CompCount)-1])
+	}
+	if len(AccumulatedLevelDBInfo.IOStats) > 0 {
+		logger.Println("Latest IOStat:", AccumulatedLevelDBInfo.IOStats[len(AccumulatedLevelDBInfo.IOStats)-1])
+	}
+	if len(AccumulatedLevelDBInfo.WriteTimes) > 0 {
+		logger.Println("Latest Write Time:", AccumulatedLevelDBInfo.WriteTimes[len(AccumulatedLevelDBInfo.WriteTimes)-1])
+	}
+
+	logger.Println("LEVELDB WRITE INFO(end) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+}
+
 
 // Hash represents the 32 byte Keccak256 hash of arbitrary data.
 type Hash [HashLength]byte

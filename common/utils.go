@@ -3,7 +3,6 @@ package common
 import (
 	"fmt"
 	"os"
-
 	// "github.com/ethereum/go-ethereum/log"
 )
 

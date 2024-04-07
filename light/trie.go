@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
-	
 )
 
 func NewState(ctx context.Context, head *types.Header, odr OdrBackend) *state.StateDB {
@@ -121,6 +120,7 @@ func (t *odrTrie) TryDelete(key []byte) error {
 }
 
 func (t *odrTrie) Commit(onleaf trie.LeafCallback) (common.Hash, error) {
+	fmt.Println("Commit() trie.go - - - - - - - - - - - - - - - - - - - - - - -")
 	if t.trie == nil {
 		return t.id.Root, nil
 	}

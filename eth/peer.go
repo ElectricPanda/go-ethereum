@@ -343,7 +343,8 @@ func (p *peer) RequestBodies(hashes []common.Hash) error {
 // data, corresponding to the specified hashes.
 func (p *peer) RequestNodeData(hashes []common.Hash) error {
 	// fmt.Println("RequestNodeData(), current time: ", time.Now())
-	fmt.Printf("END(RECEIVER) //////////////////////////////////////////////////////////////////////////// Time took %s\n", time.Since(common.ReceiveStartTime))
+	ReceiveEndTime := time.Now()
+	fmt.Printf("END(RECEIVER) //////////////////////// Time took %s **** at time %s\n", time.Since(common.ReceiveStartTime), ReceiveEndTime)
 	p.Log().Debug("Fetching batch of state data", "count", len(hashes))
 	return p2p.Send(p.rw, GetNodeDataMsg, hashes)
 }
