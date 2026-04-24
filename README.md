@@ -2,6 +2,20 @@
 
 Golang execution layer implementation of the Ethereum protocol.
 
+## Branch Note: `research/hash-state-replay`
+
+This branch is an experimental research branch for replaying historical transactions
+from sparse hash-based state checkpoints instead of running a full archive node.
+
+It currently adds:
+
+- periodic hash-state checkpoint commits during full sync
+- checkpoint-aware replay and tracing workflows for block ranges
+- small helper scripts under `build/bin/experiment/` for target sync and replay verification
+
+The goal is to make it easier to keep selected historical states on disk and use
+them later for transaction replay, tracing, and gas/performance experiments.
+
 [![API Reference](
 https://pkg.go.dev/badge/github.com/ethereum/go-ethereum
 )](https://pkg.go.dev/github.com/ethereum/go-ethereum?tab=doc)
