@@ -5,16 +5,72 @@ Golang execution layer implementation of the Ethereum protocol.
 ## Branch Note: `research/hash-state-replay`
 
 This branch is an experimental research branch for replaying historical transactions
-from sparse hash-based state checkpoints instead of running a full archive node.
+from sparse hash-based state checkpoints instead of maintaining a full archive node.
+It is meant for workflows such as gas analysis, trace collection, and profile-guided
+optimization experiments where a small set of historical starting states is more useful
+than retaining every historical trie.
 
-It currently adds:
+Detailed notes for this branch, including the checkpoint policy, helper scripts,
+and replay workflow, live in [scripts/hash-state-replay/README.md](scripts/hash-state-replay/README.md).
 
-- periodic hash-state checkpoint commits during full sync
-- checkpoint-aware replay and tracing workflows for block ranges
-- small helper scripts under `build/bin/experiment/` for target sync and replay verification
+### What This Branch Adds
 
-The goal is to make it easier to keep selected historical states on disk and use
-them later for transaction replay, tracing, and gas/performance experiments.
+- sparse state checkpoint commits during hash-based full sync
+- replay-oriented tracing helpers for checking whether a saved checkpoint is usable
+- a native `pgoTracer` for collecting compact transaction, call-frame, and code-profile data
+- helper scripts and a documented target-sync/offline-replay workflow under `scripts/hash-state-replay/`
+
+### Checkpoint Policy
+
+This branch currently uses `stateCheckpointInterval = 100_000`.
+
+- In `hash` + non-archive mode, a checkpoint is committed when `currentBlock + 1`
+  is a multiple of `100000`
+- This means the post-state of block `99,999` is saved so that block `100,000`
+  can be replayed later without reexecuting earlier history
+- The same logic is used for block-number-based forks: the block immediately before
+  the fork is committed so the first fork block can be replayed from disk
+- For timestamp-based forks, the branch commits the parent state when the first
+  post-fork block arrives, preserving a usable pre-fork checkpoint
+
+The checkpoint logic lives in `core/blockchain.go` inside `writeBlockWithState`.
+
+### Replay And Tracing APIs
+
+The collected checkpoints are intended to be used with replay-oriented debug APIs:
+
+- `debug_sync(<blockHash>)`
+  - starts a full sync toward a specific target block hash without requiring a
+    consensus client during the capture phase
+  - useful for stopping capture at a chosen historical block before offline replay
+- `debug_traceBlockByNumber(number, {"reexec": 0, ...})`
+  - traces a single block using only already-persisted state
+  - useful as a preflight check: if this succeeds with `reexec=0`, the block's
+    parent state is already available on disk
+- `debug_subscribe("traceChain", startMinusOne, end, config)`
+  - replays a block range sequentially from `(startMinusOne, end]`
+  - useful once a starting checkpoint is known to exist
+  - notifications usually include blocks with transactions, plus the final block
+
+This branch also adds `PgoTraceChain`/`pgoTracer`, which can emit compact summaries
+for:
+
+- per-transaction metadata and gas usage
+- call frames and revert/fault summaries
+- touched accounts and storage/code/balance/nonce diffs
+- lightweight code profiles such as opcode, PC, and edge counters
+
+### Typical Workflow
+
+1. Full-sync to a chosen target block
+2. Restart the node in offline analysis mode
+3. Use `debug_traceBlockByNumber(..., {"reexec": 0})` to confirm that a chosen start
+   block is reachable from a saved checkpoint
+4. Replay a block range with a `traceChain` subscription client or `PgoTraceChain`
+
+This makes it possible to retain selected historical states, verify that they are
+usable, and later replay blocks or transactions from those states without a full
+archive node.
 
 [![API Reference](
 https://pkg.go.dev/badge/github.com/ethereum/go-ethereum
