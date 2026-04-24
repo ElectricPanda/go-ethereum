@@ -121,10 +121,11 @@ var (
 )
 
 const (
-	bodyCacheLimit     = 256
-	blockCacheLimit    = 256
-	receiptsCacheLimit = 32
-	txLookupCacheLimit = 1024
+	bodyCacheLimit          = 256
+	blockCacheLimit         = 256
+	receiptsCacheLimit      = 32
+	txLookupCacheLimit      = 1024
+	stateCheckpointInterval = 100_000
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -1676,6 +1677,50 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 	return nil
 }
 
+func shouldCommitStateCheckpoint(number uint64, config *params.ChainConfig) bool {
+	next := number + 1
+	if next != 0 && next%stateCheckpointInterval == 0 {
+		return true
+	}
+	return isPreBlockFork(number, config.HomesteadBlock) ||
+		isPreBlockFork(number, config.DAOForkBlock) ||
+		isPreBlockFork(number, config.EIP150Block) ||
+		isPreBlockFork(number, config.EIP155Block) ||
+		isPreBlockFork(number, config.EIP158Block) ||
+		isPreBlockFork(number, config.ByzantiumBlock) ||
+		isPreBlockFork(number, config.ConstantinopleBlock) ||
+		isPreBlockFork(number, config.PetersburgBlock) ||
+		isPreBlockFork(number, config.IstanbulBlock) ||
+		isPreBlockFork(number, config.MuirGlacierBlock) ||
+		isPreBlockFork(number, config.BerlinBlock) ||
+		isPreBlockFork(number, config.LondonBlock) ||
+		isPreBlockFork(number, config.ArrowGlacierBlock) ||
+		isPreBlockFork(number, config.GrayGlacierBlock) ||
+		isPreBlockFork(number, config.MergeNetsplitBlock)
+}
+
+func shouldCommitParentStateCheckpoint(parent, current *types.Header, config *params.ChainConfig) bool {
+	return didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsShanghai) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsCancun) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsPrague) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsOsaka) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsBPO1) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsBPO2) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsBPO3) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsBPO4) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsBPO5) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsAmsterdam) ||
+		didTimestampForkActivate(parent, current, config, (*params.ChainConfig).IsVerkle)
+}
+
+func isPreBlockFork(number uint64, fork *big.Int) bool {
+	return fork != nil && fork.Sign() > 0 && number+1 == fork.Uint64()
+}
+
+func didTimestampForkActivate(parent, current *types.Header, config *params.ChainConfig, isForked func(*params.ChainConfig, *big.Int, uint64) bool) bool {
+	return !isForked(config, parent.Number, parent.Time) && isForked(config, current.Number, current.Time)
+}
+
 // writeBlockWithState writes block, metadata and corresponding state data to the
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, statedb *state.StateDB) error {
@@ -1739,6 +1784,19 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if bc.cfg.ArchiveMode {
 		return bc.triedb.Commit(root, false)
 	}
+	if shouldCommitStateCheckpoint(block.NumberU64(), bc.chainConfig) {
+		if err := bc.triedb.Commit(root, true); err != nil {
+			return err
+		}
+	}
+	// Timestamp-based forks activate on the current block, so the pre-fork
+	// checkpoint is the parent root that we can commit when the forked block arrives.
+	if parent := bc.GetHeader(block.ParentHash(), block.NumberU64()-1); parent != nil && shouldCommitParentStateCheckpoint(parent, block.Header(), bc.chainConfig) {
+		if err := bc.triedb.Commit(parent.Root, true); err != nil {
+			return err
+		}
+	}
+
 	// Full but not archive node, do proper garbage collection
 	bc.triedb.Reference(root, common.Hash{}) // metadata reference to keep trie alive
 	bc.triegc.Push(root, -int64(block.NumberU64()))

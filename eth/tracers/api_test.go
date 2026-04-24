@@ -1172,6 +1172,50 @@ func TestTraceChain(t *testing.T) {
 	}
 }
 
+func TestPgoTraceConfig(t *testing.T) {
+	timeout := "17s"
+	reexec := uint64(99)
+	stateOverrides := override.StateOverride{
+		common.HexToAddress("0x0000000000000000000000000000000000001234"): override.OverrideAccount{
+			Code: ptr(hexutil.Bytes{0x60, 0x00, 0x60, 0x00, 0xf3}),
+		},
+	}
+	cfg, err := (&PgoTraceConfig{
+		Reexec:            &reexec,
+		Timeout:           &timeout,
+		StateOverrides:    &stateOverrides,
+		OnlyTopCall:       true,
+		IncludeTxSummary:  true,
+		IncludeCallFrames: true,
+	}).traceConfig()
+	if err != nil {
+		t.Fatalf("failed to construct pgo trace config: %v", err)
+	}
+	if cfg.Tracer == nil || *cfg.Tracer != "pgoTracer" {
+		t.Fatalf("unexpected tracer name: %v", cfg.Tracer)
+	}
+	if cfg.Reexec == nil || *cfg.Reexec != reexec {
+		t.Fatalf("unexpected reexec value: %v", cfg.Reexec)
+	}
+	if cfg.Timeout == nil || *cfg.Timeout != timeout {
+		t.Fatalf("unexpected timeout value: %v", cfg.Timeout)
+	}
+	if cfg.StateOverrides == nil || len(*cfg.StateOverrides) != 1 {
+		t.Fatalf("unexpected state overrides: %#v", cfg.StateOverrides)
+	}
+	var tracerCfg map[string]bool
+	if err := json.Unmarshal(cfg.TracerConfig, &tracerCfg); err != nil {
+		t.Fatalf("failed to decode tracer config: %v", err)
+	}
+	if !tracerCfg["onlyTopCall"] || !tracerCfg["includeTxSummary"] || !tracerCfg["includeCallFrames"] {
+		t.Fatalf("unexpected tracer config contents: %#v", tracerCfg)
+	}
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}
+
 // newTestMergedBackend creates a post-merge chain
 func newTestMergedBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i int, b *core.BlockGen)) *testBackend {
 	backend := &testBackend{

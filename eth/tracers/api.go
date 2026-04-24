@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
@@ -44,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 )
 
 const (
@@ -157,9 +159,40 @@ type TraceConfig struct {
 	Tracer  *string
 	Timeout *string
 	Reexec  *uint64
+	// StateOverrides are applied before tracing and may be used to replace
+	// contract code or other account fields during replay-based experiments.
+	StateOverrides *override.StateOverride `json:"stateOverrides,omitempty"`
+	// FeeNormalizedContinuation removes per-transaction fee-balance deltas from
+	// sequential override replay state, so later historical tx validity is not
+	// affected by gas savings/regressions alone.
+	FeeNormalizedContinuation bool `json:"feeNormalizedContinuation,omitempty"`
+	// ShadowOverrides traces each transaction against an overridden copy of the
+	// canonical pre-transaction state, then advances the replay with the original
+	// transaction. This isolates override side effects so one semantic mismatch
+	// does not poison later block replay.
+	ShadowOverrides bool `json:"shadowOverrides,omitempty"`
 	// Config specific to given tracer. Note struct logger
 	// config are historically embedded in main object.
 	TracerConfig json.RawMessage
+}
+
+// PgoTraceConfig is the subscription config for the compact PGO chain tracer.
+// It is translated internally into a TraceConfig with tracer="pgoTracer".
+type PgoTraceConfig struct {
+	Reexec                    *uint64                 `json:"reexec,omitempty"`
+	Timeout                   *string                 `json:"timeout,omitempty"`
+	StateOverrides            *override.StateOverride `json:"stateOverrides,omitempty"`
+	OnlyTopCall               bool                    `json:"onlyTopCall,omitempty"`
+	IncludeTxSummary          bool                    `json:"includeTxSummary,omitempty"`
+	IncludeCallFrames         bool                    `json:"includeCallFrames,omitempty"`
+	IncludeProfiles           bool                    `json:"includeProfiles,omitempty"`
+	IncludeRawPayloads        bool                    `json:"includeRawPayloads,omitempty"`
+	IncludeLogPayloads        bool                    `json:"includeLogPayloads,omitempty"`
+	IncludeFaultSummaries     bool                    `json:"includeFaultSummaries,omitempty"`
+	FeeNormalizedContinuation bool                    `json:"feeNormalizedContinuation,omitempty"`
+	ShadowOverrides           bool                    `json:"shadowOverrides,omitempty"`
+	FocusAddresses            []string                `json:"focusAddresses,omitempty"`
+	FocusSelectors            []string                `json:"focusSelectors,omitempty"`
 }
 
 // TraceCallConfig is the config for traceCall API. It holds one more
@@ -209,6 +242,53 @@ type txTraceTask struct {
 	index   int            // Transaction offset in the block
 }
 
+func (config *PgoTraceConfig) traceConfig() (*TraceConfig, error) {
+	traceConfig := &TraceConfig{}
+	if config == nil {
+		tracer := "pgoTracer"
+		traceConfig.Tracer = &tracer
+		return traceConfig, nil
+	}
+	traceConfig.Reexec = config.Reexec
+	traceConfig.Timeout = config.Timeout
+	traceConfig.StateOverrides = config.StateOverrides
+	traceConfig.FeeNormalizedContinuation = config.FeeNormalizedContinuation
+	traceConfig.ShadowOverrides = config.ShadowOverrides
+
+	tracerConfig, err := json.Marshal(map[string]any{
+		"onlyTopCall":           config.OnlyTopCall,
+		"includeTxSummary":      config.IncludeTxSummary,
+		"includeCallFrames":     config.IncludeCallFrames,
+		"includeProfiles":       config.IncludeProfiles,
+		"includeRawPayloads":    config.IncludeRawPayloads,
+		"includeLogPayloads":    config.IncludeLogPayloads,
+		"includeFaultSummaries": config.IncludeFaultSummaries,
+		"focusAddresses":        config.FocusAddresses,
+		"focusSelectors":        config.FocusSelectors,
+	})
+	if err != nil {
+		return nil, err
+	}
+	tracer := "pgoTracer"
+	traceConfig.Tracer = &tracer
+	traceConfig.TracerConfig = tracerConfig
+	return traceConfig, nil
+}
+
+func compactPgoTraceResults(config *TraceConfig, results []*txTraceResult) []*txTraceResult {
+	compacted := make([]*txTraceResult, 0, len(results))
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		if result.Error == "" && result.Result == nil {
+			continue
+		}
+		compacted = append(compacted, result)
+	}
+	return compacted
+}
+
 // TraceChain returns the structured logs created during the execution of EVM
 // between two blocks (excluding start) and returns them as a JSON object.
 func (api *API) TraceChain(ctx context.Context, start, end rpc.BlockNumber, config *TraceConfig) (*rpc.Subscription, error) { // Fetch the block interval that we want to trace
@@ -239,12 +319,29 @@ func (api *API) TraceChain(ctx context.Context, start, end rpc.BlockNumber, conf
 	return sub, nil
 }
 
+// PgoTraceChain streams compact PGO summaries for all transactions between two
+// blocks (excluding start, including end). It behaves like traceChain but
+// forces the native pgoTracer and accepts a PGO-specific config.
+func (api *API) PgoTraceChain(ctx context.Context, start, end rpc.BlockNumber, config *PgoTraceConfig) (*rpc.Subscription, error) {
+	traceConfig, err := config.traceConfig()
+	if err != nil {
+		return nil, err
+	}
+	return api.TraceChain(ctx, start, end, traceConfig)
+}
+
 // traceChain configures a new tracer according to the provided configuration, and
 // executes all the transactions contained within. The tracing chain range includes
 // the end block but excludes the start one. The return value will be one item per
 // transaction, dependent on the requested tracer.
 // The tracing procedure should be aborted in case the closed signal is received.
 func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed <-chan error) chan *blockTraceResult {
+	if config != nil && config.StateOverrides != nil {
+		if config.ShadowOverrides {
+			return api.traceChainWithShadowOverrides(start, end, config, closed)
+		}
+		return api.traceChainWithOverrides(start, end, config, closed)
+	}
 	reexec := defaultTraceReexec
 	if config != nil && config.Reexec != nil {
 		reexec = *config.Reexec
@@ -293,6 +390,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				// state is the parent state of trace block, use block.number-1 as
 				// the state number.
 				tracker.releaseState(task.block.NumberU64()-1, task.release)
+				task.results = compactPgoTraceResults(config, task.results)
 
 				// Stream the result back to the result catcher or abort on teardown
 				select {
@@ -437,6 +535,341 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				delete(done, next)
 				next++
 			}
+		}
+	}()
+	return retCh
+}
+
+func (api *API) applyTraceStateOverrides(statedb *state.StateDB, block *types.Block, config *TraceConfig) error {
+	if config == nil || config.StateOverrides == nil {
+		return nil
+	}
+	blockContext := core.NewEVMBlockContext(block.Header(), api.chainContext(context.Background()), nil)
+	rules := api.backend.ChainConfig().Rules(blockContext.BlockNumber, blockContext.Random != nil, blockContext.Time)
+	precompiles := vm.ActivePrecompiledContracts(rules)
+	return config.StateOverrides.Apply(statedb, precompiles)
+}
+
+func (api *API) applyTraceBlockPreState(ctx context.Context, statedb *state.StateDB, block *types.Block) {
+	blockContext := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+	evm := vm.NewEVM(blockContext, statedb, api.backend.ChainConfig(), vm.Config{})
+	if beaconRoot := block.BeaconRoot(); beaconRoot != nil {
+		core.ProcessBeaconBlockRoot(*beaconRoot, evm)
+	}
+	if api.backend.ChainConfig().IsPrague(block.Number(), block.Time()) || api.backend.ChainConfig().IsVerkle(block.Number(), block.Time()) {
+		core.ProcessParentBlockHash(block.ParentHash(), evm)
+	}
+}
+
+func bigToUint256(value *big.Int) (*uint256.Int, error) {
+	out, overflow := uint256.FromBig(value)
+	if overflow {
+		return nil, fmt.Errorf("fee-normalization amount overflows uint256: %s", value)
+	}
+	return out, nil
+}
+
+func applyFeeBalanceDelta(statedb *state.StateDB, addr common.Address, amount *big.Int, subtract bool, decreaseReason tracing.BalanceChangeReason, increaseReason tracing.BalanceChangeReason) error {
+	if amount == nil || amount.Sign() == 0 {
+		return nil
+	}
+	amount256, err := bigToUint256(amount)
+	if err != nil {
+		return err
+	}
+	if subtract {
+		statedb.SubBalance(addr, amount256, decreaseReason)
+	} else {
+		statedb.AddBalance(addr, amount256, increaseReason)
+	}
+	return nil
+}
+
+func (api *API) applyFeeNormalizedContinuation(statedb *state.StateDB, block *types.Block, signer types.Signer, tx *types.Transaction, canonicalReceipt *types.Receipt, overrideReceipt *types.Receipt) error {
+	if canonicalReceipt == nil || overrideReceipt == nil || canonicalReceipt.GasUsed == overrideReceipt.GasUsed {
+		return nil
+	}
+	sender, err := types.Sender(signer, tx)
+	if err != nil {
+		return err
+	}
+	effectiveGasPrice := canonicalReceipt.EffectiveGasPrice
+	if effectiveGasPrice == nil {
+		effectiveGasPrice = tx.GasPrice()
+	}
+	effectiveTip := tx.EffectiveGasTipValue(block.BaseFee())
+	if effectiveTip.Sign() < 0 {
+		effectiveTip = new(big.Int)
+	}
+
+	var gasDelta uint64
+	savedGas := canonicalReceipt.GasUsed > overrideReceipt.GasUsed
+	if savedGas {
+		gasDelta = canonicalReceipt.GasUsed - overrideReceipt.GasUsed
+	} else {
+		gasDelta = overrideReceipt.GasUsed - canonicalReceipt.GasUsed
+	}
+	gasDeltaBig := new(big.Int).SetUint64(gasDelta)
+	senderAmount := new(big.Int).Mul(gasDeltaBig, effectiveGasPrice)
+	minerAmount := new(big.Int).Mul(new(big.Int).SetUint64(gasDelta), effectiveTip)
+
+	if savedGas {
+		// Optimized replay made the sender too rich and the fee recipient too poor.
+		if err := applyFeeBalanceDelta(statedb, sender, senderAmount, true, tracing.BalanceDecreaseGasBuy, tracing.BalanceIncreaseGasReturn); err != nil {
+			return err
+		}
+		return applyFeeBalanceDelta(statedb, block.Coinbase(), minerAmount, false, tracing.BalanceChangeUnspecified, tracing.BalanceIncreaseRewardTransactionFee)
+	}
+	// Optimized replay used more gas than canonical, so undo the extra fee charge.
+	if err := applyFeeBalanceDelta(statedb, sender, senderAmount, false, tracing.BalanceDecreaseGasBuy, tracing.BalanceIncreaseGasReturn); err != nil {
+		return err
+	}
+	return applyFeeBalanceDelta(statedb, block.Coinbase(), minerAmount, true, tracing.BalanceChangeUnspecified, tracing.BalanceIncreaseRewardTransactionFee)
+}
+
+// traceChainWithOverrides replays blocks sequentially from a single state-commit
+// boundary and propagates the overridden state across the entire window.
+//
+// This path is used for replay-based "code override" experiments where the
+// canonical StateAtBlock progression cannot be reused, because the optimized
+// code may alter post-state from one block to the next.
+func (api *API) traceChainWithOverrides(start, end *types.Block, config *TraceConfig, closed <-chan error) chan *blockTraceResult {
+	reexec := defaultTraceReexec
+	if config != nil && config.Reexec != nil {
+		reexec = *config.Reexec
+	}
+	retCh := make(chan *blockTraceResult)
+	go func() {
+		defer close(retCh)
+
+		var (
+			ctx    = context.Background()
+			begin  = time.Now()
+			logged time.Time
+			traced uint64
+			failed error
+		)
+
+		statedb, release, err := api.backend.StateAtBlock(ctx, start, reexec, nil, false, false)
+		if err != nil {
+			log.Warn("Chain tracing with overrides failed to build initial state", "start", start.NumberU64(), "end", end.NumberU64(), "err", err)
+			return
+		}
+		defer release()
+
+		firstTarget, err := api.blockByNumber(ctx, rpc.BlockNumber(start.NumberU64()+1))
+		if err != nil {
+			log.Warn("Chain tracing with overrides failed to fetch first target block", "start", start.NumberU64(), "end", end.NumberU64(), "err", err)
+			return
+		}
+		if err := api.applyTraceStateOverrides(statedb, firstTarget, config); err != nil {
+			log.Warn("Chain tracing with overrides failed to apply state overrides", "start", start.NumberU64(), "end", end.NumberU64(), "err", err)
+			return
+		}
+
+		processor := core.NewStateProcessor(api.chainContext(ctx))
+		for number := start.NumberU64() + 1; number <= end.NumberU64(); number++ {
+			select {
+			case <-closed:
+				log.Warn("Chain tracing with overrides aborted", "start", start.NumberU64(), "end", end.NumberU64(), "abort", number, "transactions", traced, "elapsed", time.Since(begin))
+				return
+			default:
+			}
+			if time.Since(logged) > 8*time.Second {
+				logged = time.Now()
+				log.Info("Tracing chain segment with overrides", "start", start.NumberU64(), "end", end.NumberU64(), "current", number, "transactions", traced, "elapsed", time.Since(begin))
+			}
+			block, err := api.blockByNumber(ctx, rpc.BlockNumber(number))
+			if err != nil {
+				failed = err
+				break
+			}
+			var canonicalReceipts types.Receipts
+			if config != nil && config.FeeNormalizedContinuation {
+				canonicalReceipts = rawdb.ReadReceipts(api.backend.ChainDb(), block.Hash(), block.NumberU64(), block.Time(), api.backend.ChainConfig())
+				if len(canonicalReceipts) != len(block.Transactions()) {
+					failed = fmt.Errorf("fee-normalized continuation requires %d canonical receipts for block %d, got %d", len(block.Transactions()), block.NumberU64(), len(canonicalReceipts))
+					break
+				}
+			}
+			traceState := statedb.Copy()
+			api.applyTraceBlockPreState(ctx, traceState, block)
+			blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+			signer := types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+			results := make([]*txTraceResult, len(block.Transactions()))
+			blockFailed := false
+			for i, tx := range block.Transactions() {
+				msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+				txctx := &Context{
+					BlockHash:   block.Hash(),
+					BlockNumber: block.Number(),
+					TxIndex:     i,
+					TxHash:      tx.Hash(),
+				}
+				res, receipt, err := api.traceTxWithReceipt(ctx, tx, msg, txctx, blockCtx, traceState, config, nil)
+				if err != nil {
+					results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
+					log.Warn("Tracing with overrides failed", "hash", tx.Hash(), "block", block.NumberU64(), "err", err)
+					failed = err
+					blockFailed = true
+					break
+				}
+				results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
+				if config != nil && config.FeeNormalizedContinuation {
+					if err := api.applyFeeNormalizedContinuation(traceState, block, signer, tx, canonicalReceipts[i], receipt); err != nil {
+						results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
+						log.Warn("Fee-normalized continuation failed", "hash", tx.Hash(), "block", block.NumberU64(), "err", err)
+						failed = err
+						blockFailed = true
+						break
+					}
+				}
+			}
+			results = compactPgoTraceResults(config, results)
+			retCh <- &blockTraceResult{
+				Block:  hexutil.Uint64(block.NumberU64()),
+				Hash:   block.Hash(),
+				Traces: results,
+			}
+			traced += uint64(len(block.Transactions()))
+			if blockFailed {
+				break
+			}
+
+			// Progress the replay state to the post-state of this block under the
+			// overrides. This keeps long-window replay semantically consistent.
+			if config != nil && config.FeeNormalizedContinuation {
+				api.backend.Engine().Finalize(api.chainContext(ctx), block.Header(), traceState, block.Body())
+				statedb = traceState
+			} else {
+				if _, err := processor.Process(ctx, block, statedb, vm.Config{}); err != nil {
+					failed = err
+					break
+				}
+			}
+		}
+		switch {
+		case failed != nil:
+			log.Warn("Chain tracing with overrides failed", "start", start.NumberU64(), "end", end.NumberU64(), "transactions", traced, "elapsed", time.Since(begin), "err", failed)
+		default:
+			log.Info("Chain tracing with overrides finished", "start", start.NumberU64(), "end", end.NumberU64(), "transactions", traced, "elapsed", time.Since(begin))
+		}
+	}()
+	return retCh
+}
+
+// traceChainWithShadowOverrides evaluates override effects transaction-by-
+// transaction while keeping the long replay anchored to canonical execution.
+//
+// For each historical transaction, the tracer runs the optimized code on a copy
+// of the canonical pre-transaction state and discards the resulting post-state.
+// The real replay state is then advanced by executing the original transaction.
+// This makes long-window experiments robust: an unsafe candidate can be measured
+// and diagnosed without preventing later transactions or blocks from running.
+func (api *API) traceChainWithShadowOverrides(start, end *types.Block, config *TraceConfig, closed <-chan error) chan *blockTraceResult {
+	reexec := defaultTraceReexec
+	if config != nil && config.Reexec != nil {
+		reexec = *config.Reexec
+	}
+	retCh := make(chan *blockTraceResult)
+	go func() {
+		defer close(retCh)
+
+		var (
+			ctx    = context.Background()
+			begin  = time.Now()
+			logged time.Time
+			traced uint64
+			failed error
+		)
+
+		statedb, release, err := api.backend.StateAtBlock(ctx, start, reexec, nil, false, false)
+		if err != nil {
+			log.Warn("Shadow chain tracing failed to build initial state", "start", start.NumberU64(), "end", end.NumberU64(), "err", err)
+			return
+		}
+		defer release()
+
+		for number := start.NumberU64() + 1; number <= end.NumberU64(); number++ {
+			select {
+			case <-closed:
+				log.Warn("Shadow chain tracing aborted", "start", start.NumberU64(), "end", end.NumberU64(), "abort", number, "transactions", traced, "elapsed", time.Since(begin))
+				return
+			default:
+			}
+			if time.Since(logged) > 8*time.Second {
+				logged = time.Now()
+				log.Info("Tracing chain segment with shadow overrides", "start", start.NumberU64(), "end", end.NumberU64(), "current", number, "transactions", traced, "elapsed", time.Since(begin))
+			}
+			block, err := api.blockByNumber(ctx, rpc.BlockNumber(number))
+			if err != nil {
+				failed = err
+				break
+			}
+
+			blockState := statedb.Copy()
+			api.applyTraceBlockPreState(ctx, blockState, block)
+			blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+			signer := types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+			results := make([]*txTraceResult, len(block.Transactions()))
+
+			for i, tx := range block.Transactions() {
+				msg, err := core.TransactionToMessage(tx, signer, block.BaseFee())
+				if err != nil {
+					results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
+					log.Warn("Shadow chain tracing failed to derive message", "hash", tx.Hash(), "block", block.NumberU64(), "err", err)
+					failed = err
+					break
+				}
+				txctx := &Context{
+					BlockHash:   block.Hash(),
+					BlockNumber: block.Number(),
+					TxIndex:     i,
+					TxHash:      tx.Hash(),
+				}
+
+				shadowState := blockState.Copy()
+				if err := api.applyTraceStateOverrides(shadowState, block, config); err != nil {
+					results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
+					log.Warn("Shadow chain tracing failed to apply state overrides", "hash", tx.Hash(), "block", block.NumberU64(), "err", err)
+				} else {
+					res, _, err := api.traceTxWithReceipt(ctx, tx, msg, txctx, blockCtx, shadowState, config, nil)
+					if err != nil {
+						results[i] = &txTraceResult{TxHash: tx.Hash(), Error: err.Error()}
+						log.Warn("Shadow tracing with overrides failed", "hash", tx.Hash(), "block", block.NumberU64(), "err", err)
+					} else {
+						results[i] = &txTraceResult{TxHash: tx.Hash(), Result: res}
+					}
+				}
+
+				// Always advance the canonical replay with the original code and
+				// original post-state, even if the shadow trace failed or diverged.
+				blockState.SetTxContext(tx.Hash(), i)
+				evm := vm.NewEVM(blockCtx, blockState, api.backend.ChainConfig(), vm.Config{NoBaseFee: true})
+				if _, err := core.ApplyTransactionWithEVM(msg, core.NewGasPool(msg.GasLimit), blockState, block.Number(), block.Hash(), block.Time(), tx, evm); err != nil {
+					failed = fmt.Errorf("canonical replay failed at tx %d [%s] in block %d: %w", i, tx.Hash().Hex(), block.NumberU64(), err)
+					break
+				}
+			}
+			results = compactPgoTraceResults(config, results)
+			retCh <- &blockTraceResult{
+				Block:  hexutil.Uint64(block.NumberU64()),
+				Hash:   block.Hash(),
+				Traces: results,
+			}
+			traced += uint64(len(block.Transactions()))
+			if failed != nil {
+				break
+			}
+
+			api.backend.Engine().Finalize(api.chainContext(ctx), block.Header(), blockState, block.Body())
+			statedb = blockState
+		}
+		switch {
+		case failed != nil:
+			log.Warn("Shadow chain tracing failed", "start", start.NumberU64(), "end", end.NumberU64(), "transactions", traced, "elapsed", time.Since(begin), "err", failed)
+		default:
+			log.Info("Shadow chain tracing finished", "start", start.NumberU64(), "end", end.NumberU64(), "transactions", traced, "elapsed", time.Since(begin))
 		}
 	}()
 	return retCh
@@ -600,6 +1033,9 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 		return nil, err
 	}
 	defer release()
+	if err := api.applyTraceStateOverrides(statedb, block, config); err != nil {
+		return nil, err
+	}
 
 	blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 	evm := vm.NewEVM(blockCtx, statedb, api.backend.ChainConfig(), vm.Config{})
@@ -901,6 +1337,9 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 		TxIndex:     int(index),
 		TxHash:      hash,
 	}
+	if err := api.applyTraceStateOverrides(statedb, block, config); err != nil {
+		return nil, err
+	}
 	return api.traceTx(ctx, tx, msg, txctx, vmctx, statedb, config, nil)
 }
 
@@ -1007,10 +1446,19 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
 func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *core.Message, txctx *Context, vmctx vm.BlockContext, statedb *state.StateDB, config *TraceConfig, precompiles vm.PrecompiledContracts) (interface{}, error) {
+	result, _, err := api.traceTxWithReceipt(ctx, tx, message, txctx, vmctx, statedb, config, precompiles)
+	return result, err
+}
+
+// traceTxWithReceipt is traceTx plus the execution receipt. The receipt is used
+// by replay experiments that need to normalize gas-fee balance deltas while
+// preserving the tracer result format.
+func (api *API) traceTxWithReceipt(ctx context.Context, tx *types.Transaction, message *core.Message, txctx *Context, vmctx vm.BlockContext, statedb *state.StateDB, config *TraceConfig, precompiles vm.PrecompiledContracts) (interface{}, *types.Receipt, error) {
 	var (
 		tracer  *Tracer
 		err     error
 		timeout = defaultTraceTimeout
+		receipt *types.Receipt
 	)
 	if config == nil {
 		config = &TraceConfig{}
@@ -1026,7 +1474,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	} else {
 		tracer, err = DefaultDirectory.New(*config.Tracer, txctx, config.TracerConfig, api.backend.ChainConfig())
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	tracingStateDB := state.NewHookedState(statedb, tracer.Hooks)
@@ -1038,7 +1486,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	// Define a meaningful timeout of a single transaction trace
 	if config.Timeout != nil {
 		if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -1055,11 +1503,12 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	// Call Prepare to clear out the statedb access list
 	statedb.SetTxContext(txctx.TxHash, txctx.TxIndex)
 
-	_, err = core.ApplyTransactionWithEVM(message, core.NewGasPool(message.GasLimit), statedb, vmctx.BlockNumber, txctx.BlockHash, vmctx.Time, tx, evm)
+	receipt, err = core.ApplyTransactionWithEVM(message, core.NewGasPool(message.GasLimit), statedb, vmctx.BlockNumber, txctx.BlockHash, vmctx.Time, tx, evm)
 	if err != nil {
-		return nil, fmt.Errorf("tracing failed: %w", err)
+		return nil, receipt, fmt.Errorf("tracing failed: %w", err)
 	}
-	return tracer.GetResult()
+	result, err := tracer.GetResult()
+	return result, receipt, err
 }
 
 // APIs return the collection of RPC services the tracer package offers.
